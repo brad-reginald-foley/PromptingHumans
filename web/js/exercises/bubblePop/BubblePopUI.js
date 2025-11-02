@@ -76,6 +76,24 @@ class BubblePopUI {
                 this.hideInstructions();
             });
         }
+        
+        // Pause chat send button
+        const pauseChatSend = document.getElementById('bpPauseChatSend');
+        if (pauseChatSend) {
+            pauseChatSend.addEventListener('click', () => {
+                this.sendPauseChatMessage();
+            });
+        }
+        
+        // Pause chat input (Enter key)
+        const pauseChatInput = document.getElementById('bpPauseChatInput');
+        if (pauseChatInput) {
+            pauseChatInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    this.sendPauseChatMessage();
+                }
+            });
+        }
     }
     
     /**
@@ -106,11 +124,61 @@ class BubblePopUI {
     /**
      * Show the bubble pop screen
      */
-    show() {
-        // Show settings panel initially
-        this.showSettingsPanel();
+    async show() {
+        this.app.showScreen('bubblePopScreen');
         
-        // Reset displays
+        // Check for manual override
+        const urlParams = new URLSearchParams(window.location.search);
+        const forceSettings = urlParams.has('showSettings');
+        
+        // Only show settings if explicitly requested (dev mode or manual override)
+        if (this.app.isDevMode || forceSettings) {
+            this.showSettingsPanel();
+            this.resetDisplays();
+            return;
+        }
+        
+        // Otherwise: get backend recommendations and start
+        const sessionManager = this.app.sessionManager;
+        
+        if (sessionManager && sessionManager.isBackendConnected()) {
+            try {
+                const recommendations = await sessionManager.startActivity('bubble_pop');
+                console.log('[BubblePop] Backend recommendations:', recommendations);
+                
+                // Use backend-recommended settings
+                const difficulty = recommendations.recommended_tuning?.difficulty || 'easy';
+                const duration = recommendations.recommended_tuning?.duration || 60;
+                const spellingErrorRate = recommendations.recommended_tuning?.spelling_error_rate || 30;
+                
+                // Store settings for the game
+                this.lastSettings = {
+                    duration: duration,
+                    difficulty: difficulty,
+                    spellingErrorRate: spellingErrorRate
+                };
+                
+                // Set the values in the UI (for consistency)
+                const durationEl = document.getElementById('bpDuration');
+                const difficultyEl = document.getElementById('bpDifficulty');
+                const errorRateEl = document.getElementById('bpErrorRate');
+                
+                if (durationEl) durationEl.value = duration;
+                if (difficultyEl) difficultyEl.value = difficulty;
+                if (errorRateEl) errorRateEl.value = spellingErrorRate;
+                
+                // Start directly
+                await this.startGame();
+                return;
+            } catch (error) {
+                console.error('[BubblePop] Failed to get backend recommendations:', error);
+                // Fall through to show settings panel
+            }
+        }
+        
+        // Fallback: Show settings panel (backend unavailable or error)
+        console.log('[BubblePop] Showing settings panel (backend unavailable)');
+        this.showSettingsPanel();
         this.resetDisplays();
     }
     
@@ -163,6 +231,9 @@ class BubblePopUI {
         // Initialize the exercise with canvas and settings
         await this.exercise.initializeGame(this.canvas, settings);
         
+        // Initialize pause chat avatar
+        this.initializePauseChatAvatar();
+        
         // Start activity chat widget
         if (this.app.activityChatWidget) {
             this.app.activityChatWidget.startActivity('bubble_pop', settings.difficulty);
@@ -170,6 +241,69 @@ class BubblePopUI {
         
         // Start the exercise
         this.exercise.start();
+    }
+    
+    /**
+     * Initialize pause chat avatar
+     */
+    initializePauseChatAvatar() {
+        const avatarEl = document.getElementById('bpPauseAvatar');
+        if (avatarEl && this.app.curriculum) {
+            // Get activity number for bubble pop (activity 4)
+            const activityNum = 4;
+            const theme = this.app.curriculum.theme || 'pirate';
+            const avatarPath = `agent_avatars/activity/${activityNum.toString().padStart(2, '0')}_${theme}.svg`;
+            avatarEl.src = avatarPath;
+        }
+    }
+    
+    /**
+     * Send pause chat message
+     */
+    async sendPauseChatMessage() {
+        const input = document.getElementById('bpPauseChatInput');
+        const agentBubble = document.getElementById('bpPauseAgentMessage');
+        const studentBubble = document.getElementById('bpPauseStudentMessage');
+        
+        if (!input || !agentBubble) return;
+        
+        const message = input.value.trim();
+        if (!message) return;
+        
+        // Show student message
+        if (studentBubble) {
+            studentBubble.textContent = message;
+            studentBubble.style.display = 'block';
+        }
+        
+        // Clear input
+        input.value = '';
+        
+        // Show loading state
+        agentBubble.textContent = 'Thinking...';
+        
+        // Send to backend if available
+        if (this.app.apiClient && this.app.sessionManager) {
+            try {
+                const response = await this.app.apiClient.sendChatMessage(
+                    this.app.sessionManager.getSessionId(),
+                    message,
+                    'bubble_pop'
+                );
+                
+                if (response && response.response) {
+                    agentBubble.textContent = response.response;
+                } else {
+                    agentBubble.textContent = "I'm here to help! What would you like to know?";
+                }
+            } catch (error) {
+                console.error('Error sending pause chat message:', error);
+                agentBubble.textContent = "I'm here to help! What would you like to know?";
+            }
+        } else {
+            // Fallback response
+            agentBubble.textContent = "I'm here to help! What would you like to know?";
+        }
     }
     
     /**

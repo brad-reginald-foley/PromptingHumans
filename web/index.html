@@ -8,7 +8,8 @@
     <link rel="stylesheet" href="css/new-layout.css">
     <link rel="stylesheet" href="css/chat-widget.css">
     <link rel="stylesheet" href="css/activity-chat-widget.css">
-    <link rel="stylesheet" href="css/click-to-start.css">
+    <link rel="stylesheet" href="css/avatar-chat.css">
+    <link rel="stylesheet" href="css/pause-chat.css">
     <link rel="stylesheet" href="css/exercise-chat.css">
 </head>
 <body>
@@ -133,7 +134,7 @@
                         </div>
                     </aside>
 
-                    <!-- Right Content Area -->
+                    <!-- Center Content Area -->
                     <div class="content-area">
                         <!-- Media Display Area -->
                         <div class="media-display">
@@ -143,21 +144,24 @@
                                 <div class="pirate-ship">⛵</div>
                             </div>
                         </div>
-
-                        <!-- Chat Window (Fixed, No Collapse) - Main Tutor Only -->
-                        <div class="chat-window-fixed">
-                            <div class="chat-header-simple">
-                                <h3>Main Tutor</h3>
-                            </div>
-                            <div class="chat-messages-area" id="mainChatMessages">
-                                <!-- LLM tutor greeting will be displayed here -->
-                            </div>
-                            <div class="chat-input-area">
-                                <input type="text" class="chat-input-field" placeholder="Ask me anything..." id="mainChatInput">
-                                <button class="chat-send-button" id="mainChatSend">Send</button>
-                            </div>
-                        </div>
                     </div>
+
+                    <!-- Right Chat Sidebar -->
+                    <aside class="chat-sidebar">
+                        <div class="chat-avatar-container">
+                            <img class="chat-avatar" id="mainChatAvatar" src="agent_avatars/tutor/pirate.svg" alt="Main Tutor">
+                        </div>
+                        <div class="chat-speech-bubble agent-bubble" id="mainChatAgentMessage">
+                            Welcome! I'm here to help you learn.
+                        </div>
+                        <div class="chat-speech-bubble student-bubble" id="mainChatStudentMessage" style="display: none;">
+                            Your last message will appear here
+                        </div>
+                        <div class="chat-input-container">
+                            <input type="text" class="chat-input" placeholder="Ask me anything..." id="mainChatInput">
+                            <button class="chat-send" id="mainChatSend">Send</button>
+                        </div>
+                    </aside>
                 </div>
             </div>
 
@@ -222,29 +226,26 @@
                     </div>
                 </div>
                 
-                <!-- Exercise Chat Panel -->
-                <div id="mcChatPanel" class="exercise-chat-panel" style="display: none;">
-                    <div class="exercise-chat-header">
-                        <div class="chat-title">
-                            <span class="chat-icon">🎯</span>
-                            <span>Activity Helper</span>
-                        </div>
-                        <div class="chat-controls">
-                            <button class="chat-btn" id="mcChatMinimize" title="Minimize">_</button>
-                        </div>
+                <!-- Activity Chat Sidebar -->
+                <aside id="mcChatPanel" class="activity-chat-sidebar" style="display: none;">
+                    <div class="chat-avatar-container">
+                        <img class="activity-avatar" id="mcAvatar" alt="Activity Helper">
                     </div>
-                    <div class="exercise-chat-messages" id="mcChatMessages">
-                        <!-- Messages will be added here -->
+                    <div class="chat-speech-bubble agent-bubble" id="mcAgentMessage">
+                        Hi! I'm here to help with this activity.
                     </div>
-                    <div class="exercise-chat-input">
-                        <input type="text" id="mcChatInput" placeholder="Ask for help...">
-                        <button id="mcChatSend">Send</button>
+                    <div class="chat-speech-bubble student-bubble" id="mcStudentMessage" style="display: none;">
+                        Your last message will appear here
                     </div>
-                </div>
+                    <div class="chat-input-container">
+                        <input type="text" class="chat-input" id="mcChatInput" placeholder="Ask for help...">
+                        <button class="chat-send" id="mcChatSend">Send</button>
+                    </div>
+                </aside>
             </div>
 
             <!-- Fill in the Blank Exercise Screen -->
-            <div id="fillInBlankScreen" class="screen">
+            <div id="fillInBlankScreen" class="screen with-chat">
                 <!-- Exercise Settings -->
                 <div id="fibSettingsPanel" class="settings-panel">
                     <h2>Fill in the Blank Exercise</h2>
@@ -299,10 +300,27 @@
                         <button id="fibCheckBtn" class="btn btn-primary" disabled>Check Answers</button>
                     </div>
                 </div>
+
+                <!-- Activity Chat Sidebar -->
+                <aside id="fibChatPanel" class="activity-chat-sidebar" style="display: none;">
+                    <div class="chat-avatar-container">
+                        <img class="activity-avatar" id="fibAvatar" alt="Activity Helper">
+                    </div>
+                    <div class="chat-speech-bubble agent-bubble" id="fibAgentMessage">
+                        Hi! I'm here to help with this activity.
+                    </div>
+                    <div class="chat-speech-bubble student-bubble" id="fibStudentMessage" style="display: none;">
+                        Your last message will appear here
+                    </div>
+                    <div class="chat-input-container">
+                        <input type="text" class="chat-input" id="fibChatInput" placeholder="Ask for help...">
+                        <button class="chat-send" id="fibChatSend">Send</button>
+                    </div>
+                </aside>
             </div>
 
             <!-- Spelling Exercise Screen -->
-            <div id="spellingScreen" class="screen">
+            <div id="spellingScreen" class="screen with-chat">
                 <!-- Exercise Settings -->
                 <div id="spSettingsPanel" class="settings-panel">
                     <h2>Spelling Exercise</h2>
@@ -362,6 +380,23 @@
                         </div>
                     </div>
                 </div>
+
+                <!-- Activity Chat Sidebar -->
+                <aside id="spChatPanel" class="activity-chat-sidebar" style="display: none;">
+                    <div class="chat-avatar-container">
+                        <img class="activity-avatar" id="spAvatar" alt="Activity Helper">
+                    </div>
+                    <div class="chat-speech-bubble agent-bubble" id="spAgentMessage">
+                        Hi! I'm here to help with this activity.
+                    </div>
+                    <div class="chat-speech-bubble student-bubble" id="spStudentMessage" style="display: none;">
+                        Your last message will appear here
+                    </div>
+                    <div class="chat-input-container">
+                        <input type="text" class="chat-input" id="spChatInput" placeholder="Ask for help...">
+                        <button class="chat-send" id="spChatSend">Send</button>
+                    </div>
+                </aside>
             </div>
 
             <!-- Bubble Pop Game Screen -->
@@ -482,12 +517,24 @@
                     </div>
                 </div>
 
-                <!-- Pause Overlay -->
-                <div id="bpPauseOverlay" class="overlay" style="display: none;">
-                    <div class="overlay-content">
-                        <h2>Game Paused</h2>
-                        <p>Press ESC to resume</p>
-                    </div>
+                <!-- Pause Chat Overlay -->
+                <div id="bpPauseOverlay" class="pause-chat-overlay" style="display: none;">
+                    <aside class="pause-chat-panel">
+                        <div class="chat-avatar-container">
+                            <img class="activity-avatar" id="bpPauseAvatar" alt="Activity Helper">
+                        </div>
+                        <div class="chat-speech-bubble agent-bubble" id="bpPauseAgentMessage">
+                            Game paused! Take a break or ask me anything.
+                        </div>
+                        <div class="chat-speech-bubble student-bubble" id="bpPauseStudentMessage" style="display: none;">
+                            Your last message will appear here
+                        </div>
+                        <div class="chat-input-container">
+                            <input type="text" class="chat-input" id="bpPauseChatInput" placeholder="Ask for help...">
+                            <button class="chat-send" id="bpPauseChatSend">Send</button>
+                        </div>
+                        <div class="pause-resume-hint">Press ESC to resume game</div>
+                    </aside>
                 </div>
             </div>
 
@@ -543,6 +590,26 @@
                     
                     <button id="frQuitBtn" class="btn btn-danger btn-small">Quit Reading</button>
                 </div>
+
+                <!-- Pause Chat Overlay -->
+                <div id="frPauseOverlay" class="pause-chat-overlay" style="display: none;">
+                    <aside class="pause-chat-panel">
+                        <div class="chat-avatar-container">
+                            <img class="activity-avatar" id="frPauseAvatar" alt="Activity Helper">
+                        </div>
+                        <div class="chat-speech-bubble agent-bubble" id="frPauseAgentMessage">
+                            Reading paused! Take a break or ask me anything.
+                        </div>
+                        <div class="chat-speech-bubble student-bubble" id="frPauseStudentMessage" style="display: none;">
+                            Your last message will appear here
+                        </div>
+                        <div class="chat-input-container">
+                            <input type="text" class="chat-input" id="frPauseChatInput" placeholder="Ask for help...">
+                            <button class="chat-send" id="frPauseChatSend">Send</button>
+                        </div>
+                        <div class="pause-resume-hint">Press ESC to resume reading</div>
+                    </aside>
+                </div>
             </div>
 
             <!-- Results Screen -->
@@ -587,7 +654,6 @@
     
     <!-- Utilities -->
     <script src="js/utils/ErrorHandler.js"></script>
-    <script src="js/utils/ClickToStart.js"></script>
     
     <!-- Shared Components -->
     <script src="js/components/CanvasRenderer.js"></script>
@@ -597,8 +663,6 @@
     <script src="js/integration/APIClient.js"></script>
     <script src="js/integration/SessionManager.js"></script>
     <script src="js/integration/WebSocketClient.js"></script>
-    <script src="js/integration/ChatWidget.js"></script>
-    <script src="js/integration/ActivityChatWidget.js"></script>
     
     <!-- Core Modules -->
     <script src="js/curriculum.js"></script>

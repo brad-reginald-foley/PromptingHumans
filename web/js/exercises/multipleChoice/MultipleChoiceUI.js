@@ -73,44 +73,76 @@ class MultipleChoiceUI {
     /**
      * Show the exercise screen
      */
-    show() {
-        // In dev mode: show settings panel (preserve old behavior)
-        if (this.app.isDevMode) {
-            this.app.showScreen('multipleChoiceScreen');
+    async show() {
+        this.app.showScreen('multipleChoiceScreen');
+        
+        // Default: Hide settings, prepare exercise panel
+        document.getElementById('mcSettingsPanel').style.display = 'none';
+        document.getElementById('mcExercisePanel').style.display = 'block';
+        
+        // Show loading state
+        const questionText = document.getElementById('mcQuestionText');
+        questionText.textContent = 'Loading activity...';
+        const optionsContainer = document.getElementById('mcAnswerOptions');
+        optionsContainer.innerHTML = '<div style="text-align: center; padding: 20px; color: #666;">Preparing questions...</div>';
+        document.getElementById('mcSubmitBtn').disabled = true;
+        
+        // Check for manual override
+        const urlParams = new URLSearchParams(window.location.search);
+        const forceSettings = urlParams.has('showSettings');
+        
+        // Only show settings if explicitly requested (dev mode or manual override)
+        if (this.app.isDevMode || forceSettings) {
             document.getElementById('mcSettingsPanel').style.display = 'block';
             document.getElementById('mcExercisePanel').style.display = 'none';
             return;
         }
         
-        // Normal mode: use defaults and agent-guided flow
-        const defaults = EXERCISE_DEFAULTS.multiple_choice;
+        // Otherwise: get backend recommendations and start
+        const sessionManager = this.app.sessionManager;
         
-        // Show exercise screen
-        this.app.showScreen('multipleChoiceScreen');
-        document.getElementById('mcSettingsPanel').style.display = 'none';
-        document.getElementById('mcExercisePanel').style.display = 'block';
+        if (sessionManager && sessionManager.isBackendConnected()) {
+            try {
+                const recommendations = await sessionManager.startActivity('multiple_choice');
+                console.log('[MultipleChoice] Backend recommendations:', recommendations);
+                
+                // Use backend-recommended settings
+                const difficulty = recommendations.recommended_tuning?.difficulty || '4';
+                const numQuestions = recommendations.recommended_tuning?.num_questions || 10;
+                
+                // Set the values in the UI (for consistency)
+                document.getElementById('mcDifficulty').value = difficulty;
+                document.getElementById('mcNumQuestions').value = numQuestions;
+                
+                // Show exercise chat panel
+                this.showExerciseChat();
+                
+                // Start with backend recommendations
+                this.startExerciseWithSettings(numQuestions, difficulty);
+                return;
+            } catch (error) {
+                console.error('[MultipleChoice] Failed to get backend recommendations:', error);
+                // Fall through to show settings panel
+            }
+        }
         
-        // Show exercise chat panel
-        this.showExerciseChat();
-        
-        // LLM will send welcome message when activity_start event is received
-        
-        // Show click-to-start overlay
-        ClickToStartOverlay.show(() => {
-            this.startExerciseWithDefaults(defaults);
-        });
+        // Fallback: Show settings panel (backend unavailable or error)
+        console.log('[MultipleChoice] Showing settings panel (backend unavailable)');
+        document.getElementById('mcSettingsPanel').style.display = 'block';
+        document.getElementById('mcExercisePanel').style.display = 'none';
     }
     
     /**
-     * Start exercise with default settings
+     * Start exercise with specific settings
      * @private
-     * @param {Object} settings - Exercise settings
+     * @param {number} numQuestions - Number of questions
+     * @param {string} difficulty - Difficulty level
      */
-    startExerciseWithDefaults(settings) {
+    startExerciseWithSettings(numQuestions, difficulty) {
         try {
             this.exercise.initialize({
-                numQuestions: settings.numQuestions,
-                difficulty: settings.difficulty
+                numQuestions: parseInt(numQuestions),
+                difficulty: parseInt(difficulty)
             });
             
             this.exercise.start();
@@ -120,7 +152,7 @@ class MultipleChoiceUI {
                 this.app.wsClient.send({
                     type: 'activity_start',
                     activity: 'multiple_choice',
-                    difficulty: settings.difficulty.toString()
+                    difficulty: difficulty.toString()
                 });
                 console.log('[BREADCRUMB][MC] Sent activity_start event');
             }
@@ -477,14 +509,17 @@ class MultipleChoiceUI {
             document.body.classList.add('exercise-active');
         }
         
+        // Set random activity helper avatar
+        const avatarImg = document.getElementById('mcAvatar');
+        if (avatarImg) {
+            const avatarNum = Math.floor(Math.random() * 10) + 1;
+            const avatarNumStr = avatarNum.toString().padStart(2, '0');
+            avatarImg.src = `agent_avatars/activity/${avatarNumStr}_pirate.svg`;
+        }
+        
         // Setup chat controls
-        const minimizeBtn = document.getElementById('mcChatMinimize');
         const sendBtn = document.getElementById('mcChatSend');
         const input = document.getElementById('mcChatInput');
-        
-        if (minimizeBtn) {
-            minimizeBtn.onclick = () => this.toggleChatMinimize();
-        }
         
         if (sendBtn) {
             sendBtn.onclick = () => this.sendUserMessage();
@@ -529,30 +564,20 @@ class MultipleChoiceUI {
      * @param {string} sender - 'agent' or 'student'
      */
     sendChatMessage(message, sender = 'agent') {
-        const messagesContainer = document.getElementById('mcChatMessages');
-        if (!messagesContainer) return;
-        
-        const messageDiv = document.createElement('div');
-        messageDiv.className = `exercise-chat-message ${sender}`;
-        
-        const senderName = sender === 'agent' ? 'Helper' : 'You';
-        const now = new Date();
-        const timeStr = now.toLocaleTimeString('en-US', { 
-            hour: 'numeric', 
-            minute: '2-digit',
-            hour12: true 
-        });
-        
-        messageDiv.innerHTML = `
-            <div class="exercise-message-bubble">
-                <div class="exercise-message-sender">${senderName}</div>
-                ${this.escapeHtml(message)}
-                <div class="exercise-message-time">${timeStr}</div>
-            </div>
-        `;
-        
-        messagesContainer.appendChild(messageDiv);
-        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        if (sender === 'agent') {
+            // Update agent bubble with latest message
+            const agentBubble = document.getElementById('mcAgentMessage');
+            if (agentBubble) {
+                agentBubble.textContent = message;
+            }
+        } else {
+            // Update student bubble with latest message and show it
+            const studentBubble = document.getElementById('mcStudentMessage');
+            if (studentBubble) {
+                studentBubble.textContent = message;
+                studentBubble.style.display = 'block';
+            }
+        }
     }
     
     /**

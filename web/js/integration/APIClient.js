@@ -47,6 +47,19 @@ class APIClient {
     }
 
     /**
+     * Check if backend is available
+     * @returns {boolean} True if backend is reachable
+     */
+    async isAvailable() {
+        try {
+            await this.healthCheck();
+            return true;
+        } catch (error) {
+            return false;
+        }
+    }
+
+    /**
      * Initialize a new session
      * @param {string} username - Student username (required)
      * @param {string} moduleId - Curriculum module ID (default: r003.1)
@@ -109,15 +122,18 @@ class APIClient {
     }
 
     /**
-     * Check if backend is available
+     * Get next recommended activity based on progression logic
+     * @param {string} sessionId - Session ID
+     * @param {string} currentActivity - Current activity type (optional)
      */
-    async isAvailable() {
-        try {
-            await this.healthCheck();
-            return true;
-        } catch (error) {
-            return false;
-        }
+    async getNextActivity(sessionId, currentActivity = null) {
+        return this.request('/api/progression/next', {
+            method: 'POST',
+            body: JSON.stringify({
+                session_id: sessionId,
+                current_activity: currentActivity
+            })
+        });
     }
 }
 

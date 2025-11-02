@@ -1,6 +1,7 @@
 {
   "description": "A 3rd grade level set of vocabulary, spelling and reading exercises. Will test fluency, comprehension, and grammar (present and past tense).",
   "id": "r003.1",
+  "avatar_theme": "pirate",
   "dependencies": null,
   "subject": "reading",
   "goals": "build reading fluency, spelling, and vocabulary, with a focus on words in context. Exercises will practice word pairs like ship-shape, money-monkey, deck-dock, cat-rat and pirate-parrot. Pedagogical tools should include phonics, rhyming, 'multiple meanings', as well prompting with starting letters, or varying definitions.",

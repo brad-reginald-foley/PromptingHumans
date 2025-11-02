@@ -77,13 +77,21 @@ class ScoreManager {
     mergeBackendProgress(backendProgress) {
         if (!this.userData) return;
         
-        // Update unlock states from backend
+        console.log('[ScoreManager] ===== MERGING BACKEND PROGRESS =====');
+        console.log('[ScoreManager] Backend progress data:', JSON.stringify(backendProgress, null, 2));
+        console.log('[ScoreManager] Current local exercises before merge:', JSON.stringify(this.userData.exercises, null, 2));
+        
+        // Update unlock states and scores from backend
         for (const [exerciseType, progressData] of Object.entries(backendProgress)) {
             if (this.userData.exercises[exerciseType]) {
+                // Always update unlock status
+                const wasUnlocked = this.userData.exercises[exerciseType].unlocked;
                 this.userData.exercises[exerciseType].unlocked = progressData.unlocked;
                 
-                // Update scores if backend has better data
-                if (progressData.best_score && progressData.best_score.score > 0) {
+                console.log(`[ScoreManager] ${exerciseType}: unlocked ${wasUnlocked} → ${progressData.unlocked}`);
+                
+                // Import scores if backend has any data (even if score is 0)
+                if (progressData.best_score) {
                     const difficultyKey = `difficulty_${progressData.best_score.difficulty}`;
                     
                     if (!this.userData.exercises[exerciseType].scores[difficultyKey]) {
@@ -96,18 +104,31 @@ class ScoreManager {
                     
                     // Backend data takes precedence
                     const backendScore = progressData.best_score;
+                    const percentage = backendScore.total > 0 
+                        ? Math.round((backendScore.score / backendScore.total) * 100)
+                        : 0;
+                    
                     this.userData.exercises[exerciseType].scores[difficultyKey].highest = {
                         score: backendScore.score,
                         total: backendScore.total,
-                        percentage: backendScore.percentage,
+                        percentage: percentage,
                         date: new Date().toISOString()
                     };
-                    this.userData.exercises[exerciseType].scores[difficultyKey].attempts = progressData.attempts;
+                    this.userData.exercises[exerciseType].scores[difficultyKey].recent = {
+                        score: backendScore.score,
+                        total: backendScore.total,
+                        percentage: percentage,
+                        date: new Date().toISOString()
+                    };
+                    this.userData.exercises[exerciseType].scores[difficultyKey].attempts = progressData.attempts || 1;
+                    
+                    console.log(`[ScoreManager] Imported ${exerciseType} score:`, this.userData.exercises[exerciseType].scores[difficultyKey]);
                 }
             }
         }
         
         this.saveUserData();
+        console.log('[ScoreManager] Merge complete. Final userData:', this.userData);
     }
 
     /**

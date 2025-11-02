@@ -247,6 +247,7 @@
     flex: 1;
     overflow-y: auto;
     padding: 20px;
+    margin-right: 420px; /* Account for 400px chat sidebar + 20px spacing */
     min-width: 0; /* Allow flex item to shrink */
 }
 

@@ -39,10 +39,12 @@ class MultipleChoiceExercise extends ExerciseFramework {
     /**
      * Creates an instance of MultipleChoiceExercise
      * @param {CurriculumManager} curriculumManager - Manager for curriculum data
+     * @param {App} app - Main application instance (for accessing ScoreManager)
      */
-    constructor(curriculumManager) {
+    constructor(curriculumManager, app = null) {
         super(curriculumManager, 'multiple_choice');
         
+        this.app = app;
         this.questions = [];
         this.currentQuestionIndex = 0;
         this.selectedAnswer = null;
@@ -72,6 +74,31 @@ class MultipleChoiceExercise extends ExerciseFramework {
     }
     
     /**
+     * Check if this is the student's first time doing multiple choice
+     * @private
+     * @returns {boolean} True if first time, false otherwise
+     */
+    isFirstTimeExercise() {
+        if (!this.app || !this.app.scoreManager) {
+            return false;
+        }
+        
+        // First check: Is this a returning student according to backend?
+        const sessionInfo = this.app.sessionManager?.getSessionInfo();
+        if (sessionInfo?.sessionData?.is_returning_student) {
+            console.log('[MultipleChoice] Backend says returning student - not first time');
+            return false;  // Backend confirms returning student = not first time
+        }
+        
+        // Second check: Do we have any scores in ScoreManager?
+        const scores = this.app.scoreManager.getExerciseScores('multiple_choice');
+        const hasScores = scores && Object.keys(scores).length > 0;
+        
+        console.log('[MultipleChoice] First time check - has scores:', hasScores);
+        return !hasScores;
+    }
+    
+    /**
      * Generate questions based on settings
      * @private
      */
@@ -82,7 +109,15 @@ class MultipleChoiceExercise extends ExerciseFramework {
                 throw new Error('No vocabulary available');
             }
             
-            const numQuestions = Math.min(this.settings.numQuestions, vocabulary.length);
+            // First time: test all vocabulary for baseline assessment
+            // Subsequent times: use requested number of questions
+            const isFirstTime = this.isFirstTimeExercise();
+            const numQuestions = isFirstTime 
+                ? vocabulary.length  // All vocabulary words
+                : Math.min(this.settings.numQuestions, vocabulary.length);
+            
+            console.log(`[MultipleChoice] First time: ${isFirstTime}, Questions: ${numQuestions}/${vocabulary.length}`);
+            
             const shuffled = [...vocabulary].sort(() => Math.random() - 0.5);
             
             this.questions = [];

@@ -59,6 +59,24 @@ class FluentReadingUI {
                 this.updateSpeedDisplay(e.target.value);
             });
         }
+        
+        // Pause chat send button
+        const pauseChatSend = document.getElementById('frPauseChatSend');
+        if (pauseChatSend) {
+            pauseChatSend.addEventListener('click', () => {
+                this.sendPauseChatMessage();
+            });
+        }
+        
+        // Pause chat input (Enter key)
+        const pauseChatInput = document.getElementById('frPauseChatInput');
+        if (pauseChatInput) {
+            pauseChatInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    this.sendPauseChatMessage();
+                }
+            });
+        }
     }
     
     /**
@@ -93,7 +111,61 @@ class FluentReadingUI {
     /**
      * Show the fluent reading screen
      */
-    show() {
+    async show() {
+        this.app.showScreen('fluentReadingScreen');
+        
+        // Check for manual override
+        const urlParams = new URLSearchParams(window.location.search);
+        const forceSettings = urlParams.has('showSettings');
+        
+        // Only show settings if explicitly requested (dev mode or manual override)
+        if (this.app.isDevMode || forceSettings) {
+            this.showSettingsPanel();
+            this.resetDisplays();
+            return;
+        }
+        
+        // Otherwise: get backend recommendations and start
+        const sessionManager = this.app.sessionManager;
+        
+        if (sessionManager && sessionManager.isBackendConnected()) {
+            try {
+                const recommendations = await sessionManager.startActivity('fluent_reading');
+                console.log('[FluentReading] Backend recommendations:', recommendations);
+                
+                // Use backend-recommended settings
+                const difficulty = recommendations.recommended_tuning?.difficulty || 'moderate';
+                const speed = recommendations.recommended_tuning?.speed || 150;
+                
+                // Store settings
+                this.lastSettings = {
+                    speed: speed,
+                    difficulty: difficulty
+                };
+                
+                // Set the values in the UI (for consistency)
+                const speedSlider = document.getElementById('frSpeed');
+                const difficultySelect = document.getElementById('frDifficulty');
+                
+                if (speedSlider) {
+                    speedSlider.value = speed;
+                    this.updateSpeedDisplay(speed);
+                }
+                if (difficultySelect) {
+                    difficultySelect.value = difficulty;
+                }
+                
+                // Start directly
+                await this.startReading();
+                return;
+            } catch (error) {
+                console.error('[FluentReading] Failed to get backend recommendations:', error);
+                // Fall through to show settings panel
+            }
+        }
+        
+        // Fallback: Show settings panel (backend unavailable or error)
+        console.log('[FluentReading] Showing settings panel (backend unavailable)');
         this.showSettingsPanel();
         this.resetDisplays();
     }
@@ -174,6 +246,9 @@ class FluentReadingUI {
         // Initialize and start the exercise
         await this.exercise.initializeGame(this.canvas, settings);
         
+        // Initialize pause chat avatar
+        this.initializePauseChatAvatar();
+        
         // Start activity chat widget
         if (this.app.activityChatWidget) {
             this.app.activityChatWidget.startActivity('fluent_reading', settings.difficulty);
@@ -185,6 +260,69 @@ class FluentReadingUI {
         console.log(`Starting Fluent Reading: ${totalWords} words at ${settings.speed} WPM (~${minutes} minutes)`);
         
         this.exercise.start();
+    }
+    
+    /**
+     * Initialize pause chat avatar
+     */
+    initializePauseChatAvatar() {
+        const avatarEl = document.getElementById('frPauseAvatar');
+        if (avatarEl && this.app.curriculum) {
+            // Get activity number for fluent reading (activity 5)
+            const activityNum = 5;
+            const theme = this.app.curriculum.theme || 'pirate';
+            const avatarPath = `agent_avatars/activity/${activityNum.toString().padStart(2, '0')}_${theme}.svg`;
+            avatarEl.src = avatarPath;
+        }
+    }
+    
+    /**
+     * Send pause chat message
+     */
+    async sendPauseChatMessage() {
+        const input = document.getElementById('frPauseChatInput');
+        const agentBubble = document.getElementById('frPauseAgentMessage');
+        const studentBubble = document.getElementById('frPauseStudentMessage');
+        
+        if (!input || !agentBubble) return;
+        
+        const message = input.value.trim();
+        if (!message) return;
+        
+        // Show student message
+        if (studentBubble) {
+            studentBubble.textContent = message;
+            studentBubble.style.display = 'block';
+        }
+        
+        // Clear input
+        input.value = '';
+        
+        // Show loading state
+        agentBubble.textContent = 'Thinking...';
+        
+        // Send to backend if available
+        if (this.app.apiClient && this.app.sessionManager) {
+            try {
+                const response = await this.app.apiClient.sendChatMessage(
+                    this.app.sessionManager.getSessionId(),
+                    message,
+                    'fluent_reading'
+                );
+                
+                if (response && response.response) {
+                    agentBubble.textContent = response.response;
+                } else {
+                    agentBubble.textContent = "I'm here to help! What would you like to know?";
+                }
+            } catch (error) {
+                console.error('Error sending pause chat message:', error);
+                agentBubble.textContent = "I'm here to help! What would you like to know?";
+            }
+        } else {
+            // Fallback response
+            agentBubble.textContent = "I'm here to help! What would you like to know?";
+        }
     }
     
     /**
@@ -261,6 +399,9 @@ class FluentReadingUI {
      */
     handlePause() {
         console.log('Reading paused');
+        // Show pause overlay
+        const pauseOverlay = document.getElementById('frPauseOverlay');
+        if (pauseOverlay) pauseOverlay.style.display = 'flex';
     }
     
     /**
@@ -268,6 +409,9 @@ class FluentReadingUI {
      */
     handleResume() {
         console.log('Reading resumed');
+        // Hide pause overlay
+        const pauseOverlay = document.getElementById('frPauseOverlay');
+        if (pauseOverlay) pauseOverlay.style.display = 'none';
     }
     
     /**

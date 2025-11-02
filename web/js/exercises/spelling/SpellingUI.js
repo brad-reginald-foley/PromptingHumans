@@ -18,7 +18,11 @@ class SpellingUI {
         this.app = app;
         this.exercise = exercise;
         
+        // Bind WebSocket message handler
+        this.handleWebSocketMessage = this.handleWebSocketMessage.bind(this);
+        
         this.setupEventListeners();
+        this.setupWebSocketListener();
     }
     
     /**
@@ -64,8 +68,61 @@ class SpellingUI {
     /**
      * Show the exercise screen
      */
-    show() {
+    async show() {
         this.app.showScreen('spellingScreen');
+        
+        // Default: Hide settings, prepare exercise panel
+        document.getElementById('spSettingsPanel').style.display = 'none';
+        document.getElementById('spExercisePanel').style.display = 'block';
+        
+        // Show loading state
+        const questionText = document.getElementById('spQuestionText');
+        questionText.textContent = 'Loading activity...';
+        const input = document.getElementById('spAnswerInput');
+        input.disabled = true;
+        document.getElementById('spSubmitBtn').disabled = true;
+        
+        // Check for manual override
+        const urlParams = new URLSearchParams(window.location.search);
+        const forceSettings = urlParams.has('showSettings');
+        
+        // Only show settings if explicitly requested (dev mode or manual override)
+        if (this.app.isDevMode || forceSettings) {
+            document.getElementById('spSettingsPanel').style.display = 'block';
+            document.getElementById('spExercisePanel').style.display = 'none';
+            return;
+        }
+        
+        // Otherwise: get backend recommendations and start
+        const sessionManager = this.app.sessionManager;
+        
+        if (sessionManager && sessionManager.isBackendConnected()) {
+            try {
+                const recommendations = await sessionManager.startActivity('spelling');
+                console.log('[Spelling] Backend recommendations:', recommendations);
+                
+                // Use backend-recommended settings
+                const difficulty = recommendations.recommended_tuning?.difficulty || 'easy';
+                const numQuestions = recommendations.recommended_tuning?.num_questions || 10;
+                
+                // Set the values in the UI (for consistency)
+                document.getElementById('spDifficulty').value = difficulty;
+                document.getElementById('spNumQuestions').value = numQuestions;
+                
+                // Show exercise chat panel
+                this.showExerciseChat();
+                
+                // Start directly
+                this.startExercise();
+                return;
+            } catch (error) {
+                console.error('[Spelling] Failed to get backend recommendations:', error);
+                // Fall through to show settings panel
+            }
+        }
+        
+        // Fallback: Show settings panel (backend unavailable or error)
+        console.log('[Spelling] Showing settings panel (backend unavailable)');
         document.getElementById('spSettingsPanel').style.display = 'block';
         document.getElementById('spExercisePanel').style.display = 'none';
     }
@@ -237,12 +294,172 @@ class SpellingUI {
     showResults() {
         const results = this.exercise.getResults();
         
+        // Hide exercise chat
+        this.hideExerciseChat();
+        
         // End activity chat session
         if (this.app.activityChatWidget) {
             this.app.activityChatWidget.endActivity();
         }
         
+        // Send activity_end event to backend
+        if (this.app.wsClient && this.app.wsClient.isConnected()) {
+            this.app.wsClient.send({
+                type: 'activity_end',
+                score: results.score,
+                total: results.total
+            });
+            console.log('[BREADCRUMB][SP] Sent activity_end event');
+        }
+        
         this.app.showResults('spelling', results);
+    }
+    
+    /**
+     * Setup WebSocket message listener
+     * @private
+     */
+    setupWebSocketListener() {
+        if (this.app.wsClient) {
+            this.app.wsClient.addMessageHandler(this.handleWebSocketMessage);
+            console.log('[BREADCRUMB][SP] WebSocket listener added');
+        }
+    }
+    
+    /**
+     * Handle incoming WebSocket messages
+     * @private
+     * @param {Object} message - WebSocket message
+     */
+    handleWebSocketMessage(message) {
+        console.log('[BREADCRUMB][SP] WebSocket message received:', message.type);
+        
+        // Only handle activity-related messages
+        if (message.type === 'activity_chat' && message.sender === 'agent') {
+            console.log('[BREADCRUMB][SP] Displaying LLM response in embedded chat');
+            this.sendChatMessage(message.message, 'agent');
+        } else if (message.type === 'activity_hint') {
+            console.log('[BREADCRUMB][SP] Displaying hint in embedded chat');
+            this.sendChatMessage(`💡 ${message.hint}`, 'agent');
+        } else if (message.type === 'activity_feedback') {
+            console.log('[BREADCRUMB][SP] Displaying feedback in embedded chat');
+            this.sendChatMessage(message.feedback, 'agent');
+        }
+    }
+    
+    /**
+     * Show exercise chat panel
+     * @private
+     */
+    showExerciseChat() {
+        const chatPanel = document.getElementById('spChatPanel');
+        if (chatPanel) {
+            chatPanel.style.display = 'flex';
+            document.body.classList.add('exercise-active');
+        }
+        
+        // Set random activity helper avatar
+        const avatarImg = document.getElementById('spAvatar');
+        if (avatarImg) {
+            const avatarNum = Math.floor(Math.random() * 10) + 1;
+            const avatarNumStr = avatarNum.toString().padStart(2, '0');
+            avatarImg.src = `agent_avatars/activity/${avatarNumStr}_pirate.svg`;
+        }
+        
+        // Setup chat controls
+        const sendBtn = document.getElementById('spChatSend');
+        const input = document.getElementById('spChatInput');
+        
+        if (sendBtn) {
+            sendBtn.onclick = () => this.sendUserMessage();
+        }
+        
+        if (input) {
+            input.onkeypress = (e) => {
+                if (e.key === 'Enter') {
+                    this.sendUserMessage();
+                }
+            };
+        }
+    }
+    
+    /**
+     * Hide exercise chat panel
+     * @private
+     */
+    hideExerciseChat() {
+        const chatPanel = document.getElementById('spChatPanel');
+        if (chatPanel) {
+            chatPanel.style.display = 'none';
+            document.body.classList.remove('exercise-active');
+        }
+    }
+    
+    /**
+     * Send a message to the exercise chat
+     * @private
+     * @param {string} message - Message text
+     * @param {string} sender - 'agent' or 'student'
+     */
+    sendChatMessage(message, sender = 'agent') {
+        if (sender === 'agent') {
+            // Update agent bubble with latest message
+            const agentBubble = document.getElementById('spAgentMessage');
+            if (agentBubble) {
+                agentBubble.textContent = message;
+            }
+        } else {
+            // Update student bubble with latest message and show it
+            const studentBubble = document.getElementById('spStudentMessage');
+            if (studentBubble) {
+                studentBubble.textContent = message;
+                studentBubble.style.display = 'block';
+            }
+        }
+    }
+    
+    /**
+     * Send user message from input
+     * @private
+     */
+    sendUserMessage() {
+        console.log('[BREADCRUMB][SP] sendUserMessage() called');
+        const input = document.getElementById('spChatInput');
+        if (!input) {
+            console.log('[BREADCRUMB][SP] ERROR: Input element not found');
+            return;
+        }
+        
+        const message = input.value.trim();
+        console.log('[BREADCRUMB][SP] Message:', message);
+        if (!message) {
+            console.log('[BREADCRUMB][SP] Empty message, returning');
+            return;
+        }
+        
+        console.log('[BREADCRUMB][SP] Adding message to chat UI');
+        this.sendChatMessage(message, 'student');
+        input.value = '';
+        
+        // Send to backend via WebSocket if available
+        if (this.app.wsClient && this.app.wsClient.isConnected()) {
+            console.log('[BREADCRUMB][SP] Sending to backend via WebSocket');
+            this.app.wsClient.sendActivityChat(message);
+        } else {
+            console.log('[BREADCRUMB][SP] ERROR: WebSocket not connected');
+        }
+    }
+    
+    /**
+     * Send activity event to backend
+     * @private
+     * @param {string} event - Event type (e.g., 'wrong_answer', 'correct_answer')
+     * @param {Object} context - Event context data
+     */
+    sendActivityEvent(event, context) {
+        if (this.app.wsClient && this.app.wsClient.isConnected()) {
+            this.app.wsClient.sendActivityEvent(event, context);
+        }
     }
     
     /**

@@ -85,12 +85,13 @@ class App {
         this.apiClient = new APIClient();
         this.sessionManager = new SessionManager(this.apiClient, this.scoreManager);
         this.wsClient = new WebSocketClient();
-        // Floating widgets removed - using embedded chat only
-        // this.chatWidget = new ChatWidget(this.wsClient);
-        // this.activityChatWidget = new ActivityChatWidget(this.wsClient);
+        
+        // Activity chat state
+        this.currentActivityType = null;
+        this.currentActivityDifficulty = null;
         
         // Initialize Multiple Choice with new modular pattern
-        this.multipleChoiceExercise = new MultipleChoiceExercise(this.curriculumManager);
+        this.multipleChoiceExercise = new MultipleChoiceExercise(this.curriculumManager, this);
         this.multipleChoiceUI = new MultipleChoiceUI(this, this.multipleChoiceExercise);
         
         // Initialize Fill in the Blank with new modular pattern
@@ -123,10 +124,6 @@ class App {
     async init() {
         // Initialize backend session manager
         await this.sessionManager.initialize();
-        
-        // Floating widgets removed - using embedded chat only
-        // this.chatWidget.initialize();
-        // this.activityChatWidget.initialize();
         
         // Load curriculum data
         await this.curriculumManager.loadCurriculum();
@@ -401,20 +398,29 @@ class App {
         if (username) {
             try {
                 // Create backend session (which will also set up ScoreManager)
+                console.log('[App] ===== REGISTERING USER:', username, '=====');
                 const sessionResult = await this.sessionManager.createSession(username);
+                
+                console.log('[App] Session result:', sessionResult);
+                console.log('[App] Is returning student:', sessionResult.isReturningStudent);
+                console.log('[App] Progress data:', sessionResult.progress);
+                console.log('[App] Student context:', sessionResult.student_context);
             
                 if (sessionResult.tutorGreeting) {
-                    console.log('Tutor greeting:', sessionResult.tutorGreeting);
-                    // Display LLM tutor greeting in main chat
-                    this.sendToFixedChat('main', sessionResult.tutorGreeting, 'agent');
+                    console.log('[App] Tutor greeting:', sessionResult.tutorGreeting);
+                    // Update the agent message bubble directly
+                    const agentBubble = document.getElementById('mainChatAgentMessage');
+                    if (agentBubble) {
+                        agentBubble.textContent = sessionResult.tutorGreeting;
+                    }
                 }
                 
                 if (sessionResult.offline) {
-                    console.log('Running in offline mode');
+                    console.log('[App] Running in offline mode');
                 } else {
-                    console.log('Connected to backend, session ID:', sessionResult.sessionId);
+                    console.log('[App] Connected to backend, session ID:', sessionResult.sessionId);
                     if (sessionResult.isReturningStudent) {
-                        console.log('Welcome back! Progress restored.');
+                        console.log('[App] Welcome back! Progress restored.');
                     }
                     // Connect WebSocket
                     this.wsClient.connect(sessionResult.sessionId);
@@ -424,6 +430,7 @@ class App {
                 this.showScreen('selectionScreen');
                 this.updateExerciseCards();
             } catch (error) {
+                console.error('[App] Registration error:', error);
                 alert(error.message);
             }
         }
@@ -768,12 +775,91 @@ class App {
             console.log('[BREADCRUMB][RESULTS] Sent exercise results to backend for LLM summary');
         }
         
+        // Get next activity recommendation from progression service
+        await this.showNextActivityRecommendation(exerciseType);
+        
         // Return to main page
         this.showScreen('selectionScreen');
         this.updateExerciseCards();
         
         // Display a brief message in main chat while waiting for LLM
         this.sendToFixedChat('main', '📊 Analyzing your results...', 'agent');
+    }
+    
+    /**
+     * Show next activity recommendation after completing an activity
+     */
+    async showNextActivityRecommendation(currentActivity) {
+        try {
+            const sessionId = this.sessionManager.sessionId;
+            if (!sessionId) {
+                console.log('[PROGRESSION] No session ID, skipping recommendation');
+                return;
+            }
+            
+            // Get next activity recommendation
+            const recommendation = await this.apiClient.getNextActivity(sessionId, currentActivity);
+            
+            console.log('[PROGRESSION] Next activity recommendation:', recommendation);
+            
+            // Build recommendation message
+            let message = recommendation.reason;
+            
+            // Add progress info
+            if (recommendation.progress_percentage > 0) {
+                message += `\n\n📈 Module Progress: ${Math.round(recommendation.progress_percentage)}%`;
+                message += `\n✅ Completed: ${recommendation.completed_activities}/${recommendation.total_activities} activities`;
+            }
+            
+            // Add unlock celebration if new activity unlocked
+            if (recommendation.unlocked_new) {
+                message = `🎉 ${message}`;
+            }
+            
+            // Display recommendation in main chat
+            this.sendToFixedChat('main', message, 'agent');
+            
+            // Store current recommendation for "Continue Learning" button
+            this.currentRecommendation = recommendation;
+            
+            // Update UI to highlight recommended activity
+            this.highlightRecommendedActivity(recommendation.activity_type);
+            
+        } catch (error) {
+            console.error('[PROGRESSION] Failed to get next activity:', error);
+            // Silently fail - student can still manually select activities
+        }
+    }
+    
+    /**
+     * Highlight the recommended next activity in the UI
+     */
+    highlightRecommendedActivity(activityType) {
+        // Remove previous highlights
+        document.querySelectorAll('.activity-icon').forEach(icon => {
+            icon.classList.remove('recommended');
+        });
+        
+        // Add highlight to recommended activity
+        const recommendedIcon = document.querySelector(`.activity-icon[data-exercise="${activityType}"]`);
+        if (recommendedIcon) {
+            recommendedIcon.classList.add('recommended');
+            
+            // Add a subtle pulse animation
+            recommendedIcon.style.animation = 'pulse 2s ease-in-out infinite';
+        }
+    }
+    
+    /**
+     * Start the recommended activity (called by "Continue Learning" button)
+     */
+    startRecommendedActivity() {
+        if (this.currentRecommendation) {
+            this.selectExercise(this.currentRecommendation.activity_type);
+        } else {
+            // Fallback to first unlocked activity
+            this.selectExercise('multiple_choice');
+        }
     }
 
     /**
@@ -816,10 +902,30 @@ class App {
             this.wsClient.addMessageHandler((message) => {
                 if (message.type === 'chat' && message.sender === 'agent') {
                     console.log('[BREADCRUMB][MAIN] Displaying tutor message');
-                    this.sendToFixedChat('main', message.message, 'agent');
+                    this.updateMainChatBubble('agent', message.message);
                 }
             });
             console.log('[BREADCRUMB][MAIN] Tutor listener added');
+        }
+    }
+    
+    /**
+     * Update main chat bubble (agent or student)
+     * @param {string} sender - 'agent' or 'student'
+     * @param {string} message - Message text
+     */
+    updateMainChatBubble(sender, message) {
+        if (sender === 'agent') {
+            const agentBubble = document.getElementById('mainChatAgentMessage');
+            if (agentBubble) {
+                agentBubble.textContent = message;
+            }
+        } else if (sender === 'student') {
+            const studentBubble = document.getElementById('mainChatStudentMessage');
+            if (studentBubble) {
+                studentBubble.textContent = message;
+                studentBubble.style.display = 'block';
+            }
         }
     }
     
@@ -835,8 +941,8 @@ class App {
         
         console.log('[BREADCRUMB][MAIN] Sending message:', message);
         
-        // Display user message
-        this.sendToFixedChat('main', message, 'student');
+        // Display user message in student bubble
+        this.updateMainChatBubble('student', message);
         input.value = '';
         
         // Send to backend via WebSocket
@@ -849,6 +955,84 @@ class App {
         } else {
             console.log('[BREADCRUMB][MAIN] ERROR: WebSocket not connected');
         }
+    }
+
+    /**
+     * Activity Chat Compatibility Layer
+     * Provides backward compatibility for old activityChatWidget API
+     */
+    
+    /**
+     * Start activity - compatibility method for old widget API
+     * @param {string} activityType - Type of activity
+     * @param {string} difficulty - Difficulty level
+     */
+    startActivity(activityType, difficulty) {
+        this.currentActivityType = activityType;
+        this.currentActivityDifficulty = difficulty;
+        
+        console.log(`[ACTIVITY] Starting ${activityType} at ${difficulty} difficulty`);
+        
+        // Send to backend via WebSocket
+        if (this.wsClient && this.wsClient.isConnected()) {
+            this.wsClient.send({
+                type: 'activity_start',
+                activity_type: activityType,
+                difficulty: difficulty
+            });
+        }
+    }
+    
+    /**
+     * Send activity event - compatibility method for old widget API
+     * @param {string} eventType - Type of event (e.g., 'wrong_answer', 'correct_answer')
+     * @param {Object} data - Event data
+     */
+    sendActivityEvent(eventType, data) {
+        console.log(`[ACTIVITY] Event: ${eventType}`, data);
+        
+        // Send to backend via WebSocket for LLM processing
+        if (this.wsClient && this.wsClient.isConnected()) {
+            this.wsClient.send({
+                type: 'activity_event',
+                event_type: eventType,
+                activity_type: this.currentActivityType,
+                difficulty: this.currentActivityDifficulty,
+                data: data
+            });
+        }
+    }
+    
+    /**
+     * End activity - compatibility method for old widget API
+     */
+    endActivity() {
+        console.log(`[ACTIVITY] Ending ${this.currentActivityType}`);
+        
+        // Send to backend via WebSocket
+        if (this.wsClient && this.wsClient.isConnected()) {
+            this.wsClient.send({
+                type: 'activity_end',
+                activity_type: this.currentActivityType,
+                difficulty: this.currentActivityDifficulty
+            });
+        }
+        
+        // Clear activity state
+        this.currentActivityType = null;
+        this.currentActivityDifficulty = null;
+    }
+    
+    /**
+     * Compatibility object that mimics old activityChatWidget API
+     * This allows old code to work without modification
+     */
+    get activityChatWidget() {
+        return {
+            startActivity: (type, difficulty) => this.startActivity(type, difficulty),
+            sendActivityEvent: (eventType, data) => this.sendActivityEvent(eventType, data),
+            endActivity: () => this.endActivity()
+        };
     }
 
     /**
