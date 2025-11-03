@@ -53,11 +53,11 @@ class BubblePopUI {
             });
         }
         
-        // Quit button (during game)
-        const quitBtn = document.getElementById('bpQuitBtn');
-        if (quitBtn) {
-            quitBtn.addEventListener('click', () => {
-                this.quitGame();
+        // Pause button (during game)
+        const pauseBtn = document.getElementById('bpPauseBtn');
+        if (pauseBtn) {
+            pauseBtn.addEventListener('click', () => {
+                this.pauseGame();
             });
         }
         
@@ -94,6 +94,14 @@ class BubblePopUI {
                 }
             });
         }
+        
+        // Play button (in pause overlay)
+        const playBtn = document.getElementById('bpPlayBtn');
+        if (playBtn) {
+            playBtn.addEventListener('click', () => {
+                this.resumeGame();
+            });
+        }
     }
     
     /**
@@ -119,13 +127,43 @@ class BubblePopUI {
         this.exercise.on('complete', (results) => {
             this.handleComplete(results);
         });
+        
+        // Setup WebSocket listener for pause chat
+        this.setupWebSocketListener();
+    }
+    
+    /**
+     * Setup WebSocket listener for pause chat responses
+     */
+    setupWebSocketListener() {
+        if (this.app.wsClient) {
+            this.app.wsClient.addMessageHandler((message) => {
+                if (message.type === 'activity_chat' && message.sender === 'agent') {
+                    const agentBubble = document.getElementById('bpPauseAgentMessage');
+                    if (agentBubble) {
+                        agentBubble.textContent = message.message;
+                    }
+                }
+            });
+        }
     }
     
     /**
      * Show the bubble pop screen
+     * Settings are now passed from ActivityManager via trigger()
+     * Exercise is already initialized by ActivityManager, so we just display it
      */
     async show() {
         this.app.showScreen('bubblePopScreen');
+        
+        // Ensure canvas is available (needed for canvas-based activities)
+        if (!this.canvas) {
+            this.canvas = document.getElementById('bpCanvas');
+            if (!this.canvas) {
+                console.error('[BubblePop] Canvas element not found!');
+                return;
+            }
+        }
         
         // Check for manual override
         const urlParams = new URLSearchParams(window.location.search);
@@ -138,48 +176,30 @@ class BubblePopUI {
             return;
         }
         
-        // Otherwise: get backend recommendations and start
-        const sessionManager = this.app.sessionManager;
+        // Otherwise: Use settings from ActivityManager (already set by app.js)
+        // Get settings from ActivityManager's currentSettings
+        const settings = this.app.activityManager.currentSettings || {
+            duration: 60,
+            difficulty: 'easy',
+            spellingErrorRate: 30
+        };
         
-        if (sessionManager && sessionManager.isBackendConnected()) {
-            try {
-                const recommendations = await sessionManager.startActivity('bubble_pop');
-                console.log('[BubblePop] Backend recommendations:', recommendations);
-                
-                // Use backend-recommended settings
-                const difficulty = recommendations.recommended_tuning?.difficulty || 'easy';
-                const duration = recommendations.recommended_tuning?.duration || 60;
-                const spellingErrorRate = recommendations.recommended_tuning?.spelling_error_rate || 30;
-                
-                // Store settings for the game
-                this.lastSettings = {
-                    duration: duration,
-                    difficulty: difficulty,
-                    spellingErrorRate: spellingErrorRate
-                };
-                
-                // Set the values in the UI (for consistency)
-                const durationEl = document.getElementById('bpDuration');
-                const difficultyEl = document.getElementById('bpDifficulty');
-                const errorRateEl = document.getElementById('bpErrorRate');
-                
-                if (durationEl) durationEl.value = duration;
-                if (difficultyEl) difficultyEl.value = difficulty;
-                if (errorRateEl) errorRateEl.value = spellingErrorRate;
-                
-                // Start directly
-                await this.startGame();
-                return;
-            } catch (error) {
-                console.error('[BubblePop] Failed to get backend recommendations:', error);
-                // Fall through to show settings panel
-            }
-        }
+        console.log('[BubblePop] Using ActivityManager settings:', settings);
         
-        // Fallback: Show settings panel (backend unavailable or error)
-        console.log('[BubblePop] Showing settings panel (backend unavailable)');
-        this.showSettingsPanel();
-        this.resetDisplays();
+        // Store settings for the game
+        this.lastSettings = settings;
+        
+        // Set the values in the UI (for consistency)
+        const durationEl = document.getElementById('bpDuration');
+        const difficultyEl = document.getElementById('bpDifficulty');
+        const errorRateEl = document.getElementById('bpErrorRate');
+        
+        if (durationEl) durationEl.value = settings.duration;
+        if (difficultyEl) difficultyEl.value = settings.difficulty;
+        if (errorRateEl) errorRateEl.value = settings.spellingErrorRate || settings.spelling_error_rate || 30;
+        
+        // Start directly with ActivityManager settings
+        await this.startGame();
     }
     
     /**
@@ -216,6 +236,8 @@ class BubblePopUI {
      * Start the game
      */
     async startGame() {
+        console.log('[BubblePop][UI] 🎮 startGame() called');
+        
         // Get settings from UI or use last settings if available
         const settings = this.lastSettings || this.getSettingsFromUI();
         
@@ -230,17 +252,41 @@ class BubblePopUI {
         
         // Initialize the exercise with canvas and settings
         await this.exercise.initializeGame(this.canvas, settings);
+        console.log('[BubblePop][UI] Exercise initialized - state:', this.exercise.state);
         
         // Initialize pause chat avatar
         this.initializePauseChatAvatar();
         
-        // Start activity chat widget
-        if (this.app.activityChatWidget) {
-            this.app.activityChatWidget.startActivity('bubble_pop', settings.difficulty);
+        // Send activity_start event to backend to create activity agent
+        this.sendActivityStart(settings);
+        
+        // Show pause overlay immediately (game starts paused)
+        const pauseOverlay = document.getElementById('bpPauseOverlay');
+        if (pauseOverlay) {
+            pauseOverlay.style.display = 'flex';
+            // Update button text to "Play" for initial state
+            const playBtn = document.getElementById('bpPlayBtn');
+            if (playBtn) playBtn.textContent = 'Play';
+            console.log('[BubblePop][UI] ✅ Pause overlay shown - waiting for user to click Play');
         }
         
-        // Start the exercise
-        this.exercise.start();
+        // DON'T start the exercise yet - wait for user to click "Play"
+        // this.exercise.start(); // REMOVED - will be called from resume button
+        console.log('[BubblePop][UI] ✅ startGame() complete - game in INITIALIZED state, NOT started');
+    }
+    
+    /**
+     * Send activity_start event to backend
+     */
+    sendActivityStart(settings) {
+        if (this.app.wsClient && this.app.wsClient.isConnected()) {
+            this.app.wsClient.send({
+                type: 'activity_start',
+                activity: 'bubble_pop',
+                difficulty: settings.difficulty
+            });
+            console.log('[BubblePop] Sent activity_start event');
+        }
     }
     
     /**
@@ -260,7 +306,7 @@ class BubblePopUI {
     /**
      * Send pause chat message
      */
-    async sendPauseChatMessage() {
+    sendPauseChatMessage() {
         const input = document.getElementById('bpPauseChatInput');
         const agentBubble = document.getElementById('bpPauseAgentMessage');
         const studentBubble = document.getElementById('bpPauseStudentMessage');
@@ -282,26 +328,11 @@ class BubblePopUI {
         // Show loading state
         agentBubble.textContent = 'Thinking...';
         
-        // Send to backend if available
-        if (this.app.apiClient && this.app.sessionManager) {
-            try {
-                const response = await this.app.apiClient.sendChatMessage(
-                    this.app.sessionManager.getSessionId(),
-                    message,
-                    'bubble_pop'
-                );
-                
-                if (response && response.response) {
-                    agentBubble.textContent = response.response;
-                } else {
-                    agentBubble.textContent = "I'm here to help! What would you like to know?";
-                }
-            } catch (error) {
-                console.error('Error sending pause chat message:', error);
-                agentBubble.textContent = "I'm here to help! What would you like to know?";
-            }
+        // Send to backend via WebSocket
+        if (this.app.wsClient && this.app.wsClient.isConnected()) {
+            this.app.wsClient.sendActivityChat(message);
         } else {
-            // Fallback response
+            // Fallback if WebSocket not connected
             agentBubble.textContent = "I'm here to help! What would you like to know?";
         }
     }
@@ -337,14 +368,48 @@ class BubblePopUI {
     }
     
     /**
-     * Quit the game
+     * Pause the game
      */
-    quitGame() {
-        if (confirm('Are you sure you want to quit the game?')) {
-            this.exercise.end();
-            this.showSettingsPanel();
+    pauseGame() {
+        console.log('[BubblePop][UI] ⏸️  pauseGame() called - current state:', this.exercise.state);
+        if (this.exercise.state === 'active') {
+            this.exercise.pause();
+            console.log('[BubblePop][UI] ✅ Pause requested');
+        } else {
+            console.log('[BubblePop][UI] ⚠️  Cannot pause - game not active');
         }
     }
+    
+    /**
+     * Resume the game
+     */
+    resumeGame() {
+        console.log('[BubblePop][UI] ▶️  resumeGame() called - current state:', this.exercise.state);
+        
+        // Handle different states
+        if (this.exercise.state === 'initialized' || this.exercise.state === 'ready') {
+            // Game hasn't started yet - start it for the first time
+            console.log('[BubblePop][UI] Starting game for first time...');
+            this.exercise.start();
+            // Update button text for future pauses
+            const playBtn = document.getElementById('bpPlayBtn');
+            if (playBtn) playBtn.textContent = 'Resume';
+            console.log('[BubblePop][UI] ✅ Game started');
+        } else if (this.exercise.state === 'paused') {
+            // Resume from pause
+            console.log('[BubblePop][UI] Resuming paused game...');
+            this.exercise.resume();
+            console.log('[BubblePop][UI] ✅ Game resumed');
+        } else if (this.exercise.state === 'active') {
+            // Already active - this shouldn't happen but handle it gracefully
+            console.log('[BubblePop][UI] ⚠️  Game already active, hiding overlay');
+            const pauseOverlay = document.getElementById('bpPauseOverlay');
+            if (pauseOverlay) pauseOverlay.style.display = 'none';
+        } else {
+            console.log('[BubblePop][UI] ⚠️  Unexpected state:', this.exercise.state);
+        }
+    }
+    
     
     /**
      * Handle back button
@@ -424,13 +489,17 @@ class BubblePopUI {
      * Handle state changes
      */
     handleStateChange(data) {
+        console.log('[BubblePop][UI] 🔄 State change:', data.oldState, '→', data.newState);
+        
+        const pauseOverlay = document.getElementById('bpPauseOverlay');
+        
         if (data.newState === 'paused') {
             // Show pause overlay
-            const pauseOverlay = document.getElementById('bpPauseOverlay');
+            console.log('[BubblePop][UI] Showing pause overlay');
             if (pauseOverlay) pauseOverlay.style.display = 'flex';
-        } else if (data.oldState === 'paused' && data.newState === 'active') {
-            // Hide pause overlay
-            const pauseOverlay = document.getElementById('bpPauseOverlay');
+        } else if (data.newState === 'active') {
+            // Hide pause overlay when game becomes active (from any state)
+            console.log('[BubblePop][UI] Hiding pause overlay - game is ACTIVE');
             if (pauseOverlay) pauseOverlay.style.display = 'none';
         }
     }
@@ -439,32 +508,92 @@ class BubblePopUI {
      * Handle exercise completion
      */
     handleComplete(results) {
-        // Record score using the stored settings (not from UI which might have changed)
-        const settings = this.lastSettings || this.getSettingsFromUI();
-        this.app.scoreManager.recordScore(
-            'bubble_pop',
-            settings.difficulty,
-            results.score,
-            results.total
-        );
+        console.log('[BubblePop][UI] 🏁 handleComplete() called');
         
-        // Send metacognitive prompts to activity chat
-        if (this.app.activityChatWidget) {
-            const behavior = BubblePopExercise.DIFFICULTY_BEHAVIORS[settings.difficulty];
-            if (behavior && behavior.metacognitivePrompts && behavior.prompts) {
-                // Send completion event with prompts
-                this.app.activityChatWidget.sendActivityEvent('activity_complete', {
-                    activity: 'bubble_pop',
-                    difficulty: settings.difficulty,
-                    score: results.score,
-                    total: results.total,
-                    prompts: behavior.prompts
+        // Get settings for database save
+        const settings = this.lastSettings || this.getSettingsFromUI();
+        
+        // Send detailed results to tutor agent (NOT activity agent)
+        this.sendResultsToTutor(results, settings);
+        
+        // Show "Game Over!" message on canvas
+        this.showGameOverMessage();
+        
+        // Keep pause overlay visible for student to chat with tutor
+        const pauseOverlay = document.getElementById('bpPauseOverlay');
+        if (pauseOverlay) {
+            pauseOverlay.style.display = 'flex';
+            
+            // IMPORTANT: Remove ALL existing event listeners from Play button
+            const playBtn = document.getElementById('bpPlayBtn');
+            if (playBtn) {
+                // Clone the button to remove all event listeners
+                const newPlayBtn = playBtn.cloneNode(true);
+                playBtn.parentNode.replaceChild(newPlayBtn, playBtn);
+                
+                // Now add the single new event listener
+                newPlayBtn.textContent = 'Back to Menu';
+                newPlayBtn.addEventListener('click', () => {
+                    console.log('[BubblePop][UI] Back to Menu clicked - saving results to database');
+                    
+                    // CRITICAL: Save results to database (like other activities do)
+                    // This triggers backend save, unlock checks, and progression
+                    this.app.showResults('bubble_pop', results);
                 });
             }
         }
         
-        // Show results
-        this.showResults(results);
+        console.log('[BubblePop][UI] ✅ handleComplete() finished');
+    }
+    
+    /**
+     * Send results to tutor agent
+     */
+    sendResultsToTutor(results, settings) {
+        if (this.app.wsClient && this.app.wsClient.isConnected()) {
+            this.app.wsClient.send({
+                type: 'activity_complete_summary',
+                activity: 'bubble_pop',
+                results: {
+                    score: results.gameScore.right,
+                    wrong: results.gameScore.wrong,
+                    missed: results.gameScore.missed,
+                    total: results.bubbleCount,
+                    difficulty: settings.difficulty,
+                    timeSpent: results.timeSpent,
+                    percentage: results.percentage
+                }
+            });
+            console.log('[BubblePop] Sent results to tutor agent');
+        }
+    }
+    
+    /**
+     * Show "Game Over!" message on canvas
+     */
+    showGameOverMessage() {
+        const ctx = this.canvas.getContext('2d');
+        if (!ctx) return;
+        
+        // Semi-transparent overlay
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+        ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+        
+        // "Game Over!" text
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 48px Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('Game Over!', this.canvas.width / 2, this.canvas.height / 2);
+        
+        // Score summary
+        const results = this.exercise.getResults();
+        ctx.font = '24px Arial';
+        ctx.fillText(
+            `Score: ${results.gameScore.right}/${results.bubbleCount}`,
+            this.canvas.width / 2,
+            this.canvas.height / 2 + 50
+        );
     }
     
     /**

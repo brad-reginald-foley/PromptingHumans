@@ -195,21 +195,18 @@ class ActivityManager {
         const config = this.activities.get(activityType);
         const { exercise } = this.instances.get(activityType);
         
-        // Start the exercise
-        exercise.start();
-        
-        // Notify backend via SessionManager
-        if (this.app.sessionManager) {
-            try {
-                await this.app.sessionManager.startActivity(
-                    activityType,
-                    this.currentSettings
-                );
-            } catch (error) {
-                console.error('[ActivityManager] Failed to notify backend of activity start:', error);
-                // Continue anyway - activity can run offline
-            }
+        // Check if activity requires manual start (e.g., starts paused with chat)
+        if (!config.manualStart) {
+            // Auto-start the exercise (default behavior)
+            console.log(`[ActivityManager] Auto-starting exercise for ${activityType}`);
+            exercise.start();
+        } else {
+            // Manual start - activity will start when user triggers it (e.g., clicks "Play")
+            console.log(`[ActivityManager] Manual start mode for ${activityType} - exercise will NOT auto-start`);
         }
+        
+        // NOTE: Backend notification now happens in app.js BEFORE trigger()
+        // This allows us to fetch and use backend recommendations for difficulty
         
         // Call custom start hook if provided
         if (config.onStart) {

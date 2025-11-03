@@ -1,8 +1,9 @@
 /**
  * Spelling Exercise Module
+ * @extends ExerciseFramework
  */
 
-class SpellingExercise {
+class SpellingExercise extends ExerciseFramework {
     /**
      * Difficulty behavior configurations
      * Defines how the activity helper chat should behave at each difficulty level
@@ -29,25 +30,28 @@ class SpellingExercise {
     };
 
     constructor(curriculumManager) {
-        this.curriculumManager = curriculumManager;
+        super(curriculumManager, 'spelling');
         this.questions = [];
-        this.currentQuestionIndex = 0;
-        this.score = 0;
-        this.userAnswers = [];
-        this.numQuestions = 10;
-        this.difficulty = 'medium'; // 'easy', 'medium', 'hard'
+    }
+
+    /**
+     * Get default settings
+     */
+    getDefaultSettings() {
+        return {
+            numQuestions: 10,
+            difficulty: 'medium',
+            timeLimit: null
+        };
     }
 
     /**
      * Initialize the exercise with specified parameters
      */
-    initialize(numQuestions, difficulty) {
-        this.numQuestions = numQuestions;
-        this.difficulty = difficulty;
-        this.currentQuestionIndex = 0;
-        this.score = 0;
-        this.userAnswers = [];
+    initialize(settings = {}) {
+        super.initialize(settings);
         this.generateQuestions();
+        return this;
     }
 
     /**
@@ -55,7 +59,7 @@ class SpellingExercise {
      */
     generateQuestions() {
         // Get random vocabulary items for questions
-        const selectedItems = this.curriculumManager.getRandomVocabularyItems(this.numQuestions);
+        const selectedItems = this.curriculumManager.getRandomVocabularyItems(this.settings.numQuestions);
         
         this.questions = selectedItems.map(item => {
             return {
@@ -66,6 +70,8 @@ class SpellingExercise {
                 attempted: false
             };
         });
+        
+        this.totalQuestions = this.questions.length;
     }
 
     /**

@@ -98,33 +98,21 @@ class MultipleChoiceUI {
             return;
         }
         
-        // Otherwise: get backend recommendations and start
-        const sessionManager = this.app.sessionManager;
+        // Use default settings - ActivityManager already handled backend notification
+        console.log('[MultipleChoice] Using default settings (ActivityManager handled backend)');
+        const difficulty = '4';  // Medium difficulty default
+        const numQuestions = 10;
         
-        if (sessionManager && sessionManager.isBackendConnected()) {
-            try {
-                const recommendations = await sessionManager.startActivity('multiple_choice');
-                console.log('[MultipleChoice] Backend recommendations:', recommendations);
-                
-                // Use backend-recommended settings
-                const difficulty = recommendations.recommended_tuning?.difficulty || '4';
-                const numQuestions = recommendations.recommended_tuning?.num_questions || 10;
-                
-                // Set the values in the UI (for consistency)
-                document.getElementById('mcDifficulty').value = difficulty;
-                document.getElementById('mcNumQuestions').value = numQuestions;
-                
-                // Show exercise chat panel
-                this.showExerciseChat();
-                
-                // Start with backend recommendations
-                this.startExerciseWithSettings(numQuestions, difficulty);
-                return;
-            } catch (error) {
-                console.error('[MultipleChoice] Failed to get backend recommendations:', error);
-                // Fall through to show settings panel
-            }
-        }
+        // Set the values in the UI (for consistency)
+        document.getElementById('mcDifficulty').value = difficulty;
+        document.getElementById('mcNumQuestions').value = numQuestions;
+        
+        // Show exercise chat panel
+        this.showExerciseChat();
+        
+        // Start with default settings
+        this.startExerciseWithSettings(numQuestions, difficulty);
+        return;
         
         // Fallback: Show settings panel (backend unavailable or error)
         console.log('[MultipleChoice] Showing settings panel (backend unavailable)');

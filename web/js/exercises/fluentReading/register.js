@@ -22,7 +22,7 @@ const FluentReadingActivityConfig = {
     // Default settings
     defaultSettings: {
         speed: 150,
-        difficulty: 'moderate'
+        difficulty: 'medium'
     },
     
     // Screens used by this activity

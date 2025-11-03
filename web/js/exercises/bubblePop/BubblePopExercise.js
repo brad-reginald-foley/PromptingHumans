@@ -19,7 +19,7 @@ class BubblePopExercise extends ExerciseFramework {
             ],
             description: 'Easy - Slower speed, metacognitive reflection at end'
         },
-        'moderate': {
+        'medium': {
             feedbackTiming: 'end_only',
             metacognitivePrompts: true,
             prompts: [
@@ -179,17 +179,21 @@ class BubblePopExercise extends ExerciseFramework {
                 tortuosity = 0.2; // Low vertical movement
                 spawnRate = 3000; // Spawn every 3 seconds
                 break;
+            case 'medium':
             case 'moderate':
                 baseSpeed = 0.5;  // 50% of original speed (medium)
                 tortuosity = 0.4; // Medium vertical movement
                 spawnRate = 1500; // Twice as fast as easy (every 1.5 seconds)
                 break;
             case 'hard':
+            case 'skip':
                 baseSpeed = 0.7;  // 70% of original speed (fastest)
                 tortuosity = 0.6; // Higher vertical movement
                 spawnRate = 1200; // Even faster spawning (every 1.2 seconds)
                 break;
             default:
+                // Unknown difficulty - default to easy mode speeds
+                console.warn(`[BubblePop] Unknown difficulty "${this.difficultyMode}", using easy mode speeds`);
                 baseSpeed = 0.3;
                 tortuosity = 0.2;
                 spawnRate = 3000;
@@ -284,7 +288,7 @@ class BubblePopExercise extends ExerciseFramework {
                     this.handleBubbleClick(this.hoveredBubble, true);
                     this.hoveredBubble = null;
                 }
-            } else if (this.difficultyMode === 'moderate') {
+            } else if (this.difficultyMode === 'medium') {
                 // Moderate mode: Only R key works
                 if (key === 'r' && this.hoveredBubble) {
                     this.handleBubbleClick(this.hoveredBubble, false);
@@ -301,10 +305,7 @@ class BubblePopExercise extends ExerciseFramework {
                 }
             }
             
-            // Escape key to pause/quit (works in all modes)
-            if (key === 'escape') {
-                this.pause();
-            }
+            // ESC key disabled - use pause button instead
         });
         
         // Touch/tap handler for mobile
@@ -350,25 +351,38 @@ class BubblePopExercise extends ExerciseFramework {
         let shouldPop = true; // Always pop in all modes
         let isCorrectAction = false;
         
+        console.log(`[BubblePop] Click: word="${bubble.word}", hasError=${bubble.hasError}, isCorrectSpelling=${isCorrectSpelling}, markedAsCorrect=${markedAsCorrect}, mode=${this.difficultyMode}`);
+        
         // Different logic based on difficulty
         switch (this.difficultyMode) {
             case 'easy':
-                // Easy mode: Only Q key works, pop all words
+                // Easy mode: Q key pops correctly spelled words
                 // Q on correct word = correct, Q on misspelled = wrong
-                isCorrectAction = isCorrectSpelling;
+                isCorrectAction = markedAsCorrect && isCorrectSpelling;
                 break;
                 
+            case 'medium':
             case 'moderate':
-                // Moderate mode: Only R key works, pop all words
+                // Moderate mode: R key pops misspelled words
                 // R on misspelled word = correct, R on correct = wrong
-                isCorrectAction = !isCorrectSpelling;
+                isCorrectAction = !markedAsCorrect && !isCorrectSpelling;
                 break;
                 
             case 'hard':
-                // Hard mode: Both keys work, must match word type
+            case 'skip':
+                // Hard/Skip mode: Q for correct, R for misspelled
+                // Must match word type with key pressed
+                isCorrectAction = (markedAsCorrect === isCorrectSpelling);
+                break;
+                
+            default:
+                // Unknown difficulty - treat as hard mode
+                console.warn(`[BubblePop] Unknown difficulty "${this.difficultyMode}", treating as hard mode`);
                 isCorrectAction = (markedAsCorrect === isCorrectSpelling);
                 break;
         }
+        
+        console.log(`[BubblePop] Result: isCorrectAction=${isCorrectAction}`);
         
         if (shouldPop) {
             bubble.clicked = true;
@@ -397,6 +411,14 @@ class BubblePopExercise extends ExerciseFramework {
      * Called when exercise starts
      */
     onStart() {
+        console.log('[BubblePop][Exercise] 🟢 onStart() called - state:', this.state);
+        
+        // Safety check: ensure renderer is initialized
+        if (!this.renderer) {
+            console.error('[BubblePop] Cannot start - renderer not initialized. Call initializeGame() first.');
+            return;
+        }
+        
         // Start game timer
         this.startGameTimer();
         
@@ -408,6 +430,8 @@ class BubblePopExercise extends ExerciseFramework {
         
         // Start animation
         this.startGameAnimation();
+        
+        console.log('[BubblePop][Exercise] ✅ onStart() complete - game is now ACTIVE');
     }
     
     /**
@@ -671,6 +695,7 @@ class BubblePopExercise extends ExerciseFramework {
                             }
                             break;
                             
+                        case 'medium':
                         case 'moderate':
                             // In moderate mode: target is misspelled words (R key)
                             // Unclicked correct words count as correct (correctly ignored)
@@ -683,7 +708,13 @@ class BubblePopExercise extends ExerciseFramework {
                             break;
                             
                         case 'hard':
-                            // In hard mode, all unclicked words count as missed
+                        case 'skip':
+                            // In hard/skip mode, all unclicked words count as missed
+                            this.gameScore.missed++;
+                            break;
+                            
+                        default:
+                            // Unknown difficulty - treat as hard mode
                             this.gameScore.missed++;
                             break;
                     }
@@ -784,7 +815,7 @@ class BubblePopExercise extends ExerciseFramework {
                 case 'easy':
                     text = 'Press Q to identify correct spelling';
                     break;
-                case 'moderate':
+                case 'medium':
                     text = 'Press R to identify incorrect spelling';
                     break;
                 default:
@@ -810,6 +841,8 @@ class BubblePopExercise extends ExerciseFramework {
      * Called when exercise is paused
      */
     onPause() {
+        console.log('[BubblePop][Exercise] ⏸️  onPause() called - state:', this.state);
+        
         if (this.spawnTimer) {
             clearTimeout(this.spawnTimer);
         }
@@ -820,8 +853,30 @@ class BubblePopExercise extends ExerciseFramework {
             clearInterval(this.rampingTimer);
         }
         this.renderer.stopAnimation();
+        
+        console.log('[BubblePop][Exercise] ✅ onPause() complete - game is now PAUSED');
     }
     
+    /**
+     * Called when exercise is resumed from pause
+     */
+    onResume() {
+        console.log('[BubblePop][Exercise] ▶️  onResume() called - state:', this.state);
+        
+        // Restart game timer
+        this.startGameTimer();
+        
+        // Restart spawning bubbles
+        this.startSpawning();
+        
+        // Restart ramping timer
+        this.startRampingTimer();
+        
+        // Restart animation
+        this.startGameAnimation();
+        
+        console.log('[BubblePop][Exercise] ✅ onResume() complete - game is now ACTIVE again');
+    }
     
     /**
      * Called when exercise ends

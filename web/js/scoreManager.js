@@ -292,6 +292,21 @@ class ScoreManager {
     }
 
     /**
+     * Set unlock status for an exercise
+     * @param {string} exerciseType - The exercise type
+     * @param {boolean} unlocked - Whether to unlock (true) or lock (false)
+     */
+    setExerciseUnlocked(exerciseType, unlocked = true) {
+        if (!this.userData || !this.userData.exercises[exerciseType]) {
+            return false;
+        }
+        
+        this.userData.exercises[exerciseType].unlocked = unlocked;
+        this.saveUserData();
+        return unlocked;
+    }
+
+    /**
      * Toggle lock status for an exercise (dev mode only)
      */
     toggleExerciseLock(exerciseType) {

@@ -19,7 +19,7 @@ class FluentReadingExercise extends ExerciseFramework {
             ],
             description: 'Easy - Slower speed, metacognitive reflection at end'
         },
-        'moderate': {
+        'medium': {
             feedbackTiming: 'end_only',
             metacognitivePrompts: true,
             prompts: [
@@ -185,7 +185,7 @@ class FluentReadingExercise extends ExerciseFramework {
     getDefaultSettings() {
         return {
             speed: 150,  // Words per minute
-            difficulty: 'moderate'  // Default difficulty level
+            difficulty: 'medium'  // Default difficulty level
         };
     }
     
@@ -257,7 +257,7 @@ class FluentReadingExercise extends ExerciseFramework {
             canonicalText = canonicalText.replace(/\n\n/g, ' ');
             
             // Get current difficulty configuration
-            const diffConfig = this.difficultyConfig[this.settings.difficulty || 'moderate'];
+            const diffConfig = this.difficultyConfig[this.settings.difficulty || 'medium'];
             
             // Process vocab variant text - empty if no variant or not in difficulty
             let vocabText = '';
@@ -411,7 +411,7 @@ class FluentReadingExercise extends ExerciseFramework {
      */
     calculateTiming() {
         const baseSpeed = this.settings.speed || 150;
-        const diffConfig = this.difficultyConfig[this.settings.difficulty || 'moderate'];
+        const diffConfig = this.difficultyConfig[this.settings.difficulty || 'medium'];
         
         // Apply difficulty speed multiplier
         this.wordsPerMinute = Math.round(baseSpeed * diffConfig.speedMultiplier);

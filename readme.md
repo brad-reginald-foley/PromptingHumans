@@ -30,7 +30,7 @@ For the complete experience with LLM-powered tutoring and progress tracking:
 3. **Start the frontend server (in another terminal):**
    ```bash
    cd learning_module/web
-   python3 -m http.server 8000
+   python3 -m http.server 3000
    ```
 
 4. **Open in browser:**

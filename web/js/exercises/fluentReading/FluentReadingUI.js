@@ -110,9 +110,20 @@ class FluentReadingUI {
     
     /**
      * Show the fluent reading screen
+     * Settings are now passed from ActivityManager via trigger()
+     * Exercise is already initialized by ActivityManager, so we just display it
      */
     async show() {
         this.app.showScreen('fluentReadingScreen');
+        
+        // Ensure canvas is available (needed for canvas-based activities)
+        if (!this.canvas) {
+            this.canvas = document.getElementById('frCanvas');
+            if (!this.canvas) {
+                console.error('[FluentReading] Canvas element not found!');
+                return;
+            }
+        }
         
         // Check for manual override
         const urlParams = new URLSearchParams(window.location.search);
@@ -125,49 +136,46 @@ class FluentReadingUI {
             return;
         }
         
-        // Otherwise: get backend recommendations and start
-        const sessionManager = this.app.sessionManager;
+        // Otherwise: Use settings from ActivityManager
+        // Get settings from ActivityManager's currentSettings
+        const settings = this.app.activityManager.currentSettings || {
+            speed: 150,
+            difficulty: 'medium'
+        };
         
-        if (sessionManager && sessionManager.isBackendConnected()) {
-            try {
-                const recommendations = await sessionManager.startActivity('fluent_reading');
-                console.log('[FluentReading] Backend recommendations:', recommendations);
-                
-                // Use backend-recommended settings
-                const difficulty = recommendations.recommended_tuning?.difficulty || 'moderate';
-                const speed = recommendations.recommended_tuning?.speed || 150;
-                
-                // Store settings
-                this.lastSettings = {
-                    speed: speed,
-                    difficulty: difficulty
-                };
-                
-                // Set the values in the UI (for consistency)
-                const speedSlider = document.getElementById('frSpeed');
-                const difficultySelect = document.getElementById('frDifficulty');
-                
-                if (speedSlider) {
-                    speedSlider.value = speed;
-                    this.updateSpeedDisplay(speed);
-                }
-                if (difficultySelect) {
-                    difficultySelect.value = difficulty;
-                }
-                
-                // Start directly
-                await this.startReading();
-                return;
-            } catch (error) {
-                console.error('[FluentReading] Failed to get backend recommendations:', error);
-                // Fall through to show settings panel
-            }
+        console.log('[FluentReading] Using ActivityManager settings:', settings);
+        
+        // Store settings
+        this.lastSettings = settings;
+        
+        // Set the values in the UI (for consistency)
+        const speedSlider = document.getElementById('frSpeed');
+        const difficultySelect = document.getElementById('frDifficulty');
+        
+        if (speedSlider) {
+            speedSlider.value = settings.speed;
+            this.updateSpeedDisplay(settings.speed);
+        }
+        if (difficultySelect) {
+            difficultySelect.value = settings.difficulty;
         }
         
-        // Fallback: Show settings panel (backend unavailable or error)
-        console.log('[FluentReading] Showing settings panel (backend unavailable)');
-        this.showSettingsPanel();
-        this.resetDisplays();
+        // Show game panel
+        this.showGamePanel();
+        
+        // Initialize the exercise with canvas and settings
+        await this.exercise.initializeGame(this.canvas, settings);
+        
+        // Initialize pause chat avatar
+        this.initializePauseChatAvatar();
+        
+        // Start activity chat widget with correct difficulty
+        if (this.app.activityChatWidget) {
+            this.app.activityChatWidget.startActivity('fluent_reading', settings.difficulty);
+        }
+        
+        // Start the exercise
+        this.exercise.start();
     }
     
     /**
@@ -248,12 +256,19 @@ class FluentReadingUI {
         
         // Initialize pause chat avatar
         this.initializePauseChatAvatar();
-        
+
+        // CRITICAL: Update ActivityManager's currentSettings so it knows the actual difficulty
+        // This ensures the correct difficulty is recorded when the activity ends
+        if (this.app.activityManager) {
+            this.app.activityManager.currentSettings = settings;
+            console.log('[FluentReading] Updated ActivityManager settings:', this.app.activityManager.currentSettings);
+        }
+
         // Start activity chat widget
         if (this.app.activityChatWidget) {
             this.app.activityChatWidget.startActivity('fluent_reading', settings.difficulty);
         }
-        
+
         // Update time estimate with actual word count
         const totalWords = this.exercise.totalWords;
         const minutes = Math.ceil(totalWords / settings.speed);
@@ -279,7 +294,7 @@ class FluentReadingUI {
     /**
      * Send pause chat message
      */
-    async sendPauseChatMessage() {
+    sendPauseChatMessage() {
         const input = document.getElementById('frPauseChatInput');
         const agentBubble = document.getElementById('frPauseAgentMessage');
         const studentBubble = document.getElementById('frPauseStudentMessage');
@@ -301,56 +316,60 @@ class FluentReadingUI {
         // Show loading state
         agentBubble.textContent = 'Thinking...';
         
-        // Send to backend if available
-        if (this.app.apiClient && this.app.sessionManager) {
-            try {
-                const response = await this.app.apiClient.sendChatMessage(
-                    this.app.sessionManager.getSessionId(),
-                    message,
-                    'fluent_reading'
-                );
-                
-                if (response && response.response) {
-                    agentBubble.textContent = response.response;
-                } else {
-                    agentBubble.textContent = "I'm here to help! What would you like to know?";
-                }
-            } catch (error) {
-                console.error('Error sending pause chat message:', error);
-                agentBubble.textContent = "I'm here to help! What would you like to know?";
-            }
+        // Send to backend via WebSocket
+        if (this.app.wsClient && this.app.wsClient.isConnected()) {
+            this.app.wsClient.sendActivityChat(message);
         } else {
-            // Fallback response
+            // Fallback if WebSocket not connected
             agentBubble.textContent = "I'm here to help! What would you like to know?";
         }
     }
     
     /**
-     * Get settings from UI controls
+     * Setup exercise event listeners
      */
-    getSettingsFromUI() {
-        const speed = parseInt(document.getElementById('frSpeed')?.value) || 150;
-        const difficulty = document.getElementById('frDifficulty')?.value || 'moderate';
+    setupExerciseListeners() {
+        // Time updates
+        this.exercise.on('timeUpdate', (data) => {
+            this.updateTimeDisplay(data);
+        });
         
-        return {
-            speed: speed,
-            difficulty: difficulty
-        };
+        // State changes
+        this.exercise.on('stateChange', (data) => {
+            this.handleStateChange(data);
+        });
+        
+        // Pause/Resume
+        this.exercise.on('pause', () => {
+            this.handlePause();
+        });
+        
+        this.exercise.on('resume', () => {
+            this.handleResume();
+        });
+        
+        // Exercise complete
+        this.exercise.on('complete', (results) => {
+            this.handleComplete(results);
+        });
+        
+        // Setup WebSocket listener for pause chat
+        this.setupWebSocketListener();
     }
     
     /**
-     * Restore settings to UI controls
+     * Setup WebSocket listener for pause chat responses
      */
-    restoreSettingsToUI(settings) {
-        const speedSlider = document.getElementById('frSpeed');
-        if (speedSlider) {
-            speedSlider.value = settings.speed;
-            this.updateSpeedDisplay(settings.speed);
-        }
-        
-        const difficultySelect = document.getElementById('frDifficulty');
-        if (difficultySelect) {
-            difficultySelect.value = settings.difficulty || 'moderate';
+    setupWebSocketListener() {
+        if (this.app.wsClient) {
+            this.app.wsClient.addMessageHandler((message) => {
+                if (message.type === 'activity_chat' && message.sender === 'agent') {
+                    const agentBubble = document.getElementById('frPauseAgentMessage');
+                    if (agentBubble) {
+                        agentBubble.textContent = message.message;
+                    }
+                }
+            });
         }
     }
     

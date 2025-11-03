@@ -15,6 +15,9 @@ const BubblePopActivityConfig = {
     // Display name
     name: 'Bubble Pop',
     
+    // Manual start control - activity starts paused, user must click "Play"
+    manualStart: true,
+    
     // Exercise and UI classes
     exerciseClass: BubblePopExercise,
     uiClass: BubblePopUI,
@@ -62,7 +65,13 @@ const BubblePopActivityConfig = {
      * @param {ActivityManager} manager - Activity manager instance
      */
     onStart: async (manager) => {
-        console.log('[BubblePop] Activity started');
+        console.log('[BubblePop][Register] 🚀 onStart() hook called by ActivityManager');
+        const { exercise } = manager.getInstances('bubble_pop');
+        if (exercise) {
+            console.log('[BubblePop][Register] Exercise state before hook:', exercise.state);
+        }
+        // NOTE: We do NOT call exercise.start() here - that should be done by user clicking Play button
+        console.log('[BubblePop][Register] ✅ onStart() hook complete - did NOT start exercise');
     },
     
     /**

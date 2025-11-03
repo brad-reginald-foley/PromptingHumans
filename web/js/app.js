@@ -42,7 +42,7 @@ const EXERCISE_DEFAULTS = {
     },
     fluent_reading: {
         speed: 150, // WPM
-        difficulty: 'moderate'
+        difficulty: 'medium'
     }
 };
 
@@ -57,7 +57,7 @@ const AGENT_INSTRUCTIONS = {
     },
     fill_in_the_blank: {
         'easy': "Let's fill in the blanks! Drag the correct words to complete each definition. Only the words you need are available. Click to start!",
-        'moderate': "Fill in the blank time! Drag words to complete definitions. All vocabulary words are available, so choose carefully. Ready? Click to begin!"
+        'hard': "Fill in the blank time! Drag words to complete definitions. All vocabulary words are available, so choose carefully. Ready? Click to begin!"
     },
     spelling: {
         'easy': "Spelling practice! I'll show you a definition and you type the word. Don't worry, I'll help if you need it. Click to start!",
@@ -66,12 +66,12 @@ const AGENT_INSTRUCTIONS = {
     },
     bubble_pop: {
         'easy': "Bubble Pop! Hover over bubbles and press Q when you see a correctly spelled word. Misspelled words will float away. Click to start!",
-        'moderate': "Bubble Pop time! Hover over bubbles and press R when you see a misspelled word. Correctly spelled words float away on their own. Ready? Click!",
+        'medium': "Bubble Pop time! Hover over bubbles and press R when you see a misspelled word. Correctly spelled words float away on their own. Ready? Click!",
         'hard': "Advanced Bubble Pop! Use Q for correct spellings and R for incorrect ones. Watch carefully - they move fast! Click to begin!"
     },
     fluent_reading: {
         'easy': "Fluent Reading practice! Text will stream across the screen at a comfortable pace. Click any word to highlight it. Click to start!",
-        'moderate': "Let's practice reading fluency! Words will stream at a moderate pace. Click words to highlight them and track your reading. Ready? Click!",
+        'medium': "Let's practice reading fluency! Words will stream at a medium pace. Click words to highlight them and track your reading. Ready? Click!",
         'hard': "Fluent Reading challenge! Text streams quickly - keep up and click words to highlight. This will test your reading speed! Click to begin!"
     }
 };
@@ -550,11 +550,11 @@ class App {
             if (exerciseType === 'multiple_choice') {
                 return difficulty === '3' ? 'Easy' : difficulty === '4' ? 'Medium' : 'Hard';
             } else if (exerciseType === 'fill_in_the_blank') {
-                return difficulty === 'easy' ? 'Easy' : 'Moderate';
+                return difficulty === 'easy' ? 'Easy' : 'Hard';
             } else if (exerciseType === 'spelling') {
                 return difficulty === 'easy' ? 'Easy' : difficulty === 'medium' ? 'Medium' : 'Hard';
             } else if (exerciseType === 'bubble_pop') {
-                return difficulty === 'easy' ? 'Easy' : difficulty === 'moderate' ? 'Moderate' : 'Hard';
+                return difficulty === 'easy' ? 'Easy' : difficulty === 'medium' ? 'Medium' : 'Hard';
             } else if (exerciseType === 'fluent_reading') {
                 // Use speed as difficulty label
                 return `${difficulty} WPM`;
@@ -643,7 +643,7 @@ class App {
                     // Check if this score unlocks the next level (80%+ on hard mode)
                     const difficulty = bestScore.difficulty;
                     const isHardMode = (exerciseType === 'multiple_choice' && difficulty === '5') ||
-                                      (exerciseType === 'fill_in_the_blank' && difficulty === 'moderate') ||
+                                      (exerciseType === 'fill_in_the_blank' && difficulty === 'hard') ||
                                       (exerciseType === 'spelling' && difficulty === 'hard') ||
                                       (exerciseType === 'bubble_pop' && difficulty === 'hard') ||
                                       (exerciseType === 'fluent_reading' && difficulty === 'hard');
@@ -682,9 +682,30 @@ class App {
         this.currentExerciseType = exerciseType;
         
         try {
+            // Fetch backend recommendations FIRST (before triggering activity)
+            let settings = null;
+            
+            if (this.sessionManager && this.sessionManager.isBackendConnected()) {
+                console.log(`[App.selectExercise] Fetching backend recommendations for ${exerciseType}...`);
+                try {
+                    const backendResponse = await this.sessionManager.startActivity(exerciseType);
+                    if (backendResponse && backendResponse.recommended_tuning) {
+                        settings = backendResponse.recommended_tuning;
+                        console.log(`[App.selectExercise] ✓ Using backend recommendations:`, settings);
+                    } else {
+                        console.log(`[App.selectExercise] No backend recommendations, using defaults`);
+                    }
+                } catch (error) {
+                    console.warn(`[App.selectExercise] Failed to fetch backend recommendations:`, error);
+                    console.log(`[App.selectExercise] Falling back to default settings`);
+                }
+            } else {
+                console.log(`[App.selectExercise] Backend not connected, using default settings`);
+            }
+
             // Use ActivityManager for unified lifecycle
-            console.log(`[App.selectExercise] Step 1: Triggering activity...`);
-            await this.activityManager.trigger(exerciseType);
+            console.log(`[App.selectExercise] Step 1: Triggering activity with settings...`);
+            await this.activityManager.trigger(exerciseType, settings);
             console.log(`[App.selectExercise] Step 1: ✓ Trigger complete`);
             
             console.log(`[App.selectExercise] Step 2: Building activity...`);
@@ -735,23 +756,22 @@ class App {
      */
     async showResults(exerciseType, results = null) {
         let difficulty;
-        
-        // If results not provided, get them from the exercise
+
+        // If results not provided, get them from the exercise via ActivityManager
         if (!results) {
-            if (exerciseType === 'multiple_choice') {
-                results = this.multipleChoiceExercise.getResults();
-                difficulty = document.getElementById('mcDifficulty').value;
+            const instances = this.activityManager.getInstances(exerciseType);
+            if (instances && instances.exercise) {
+                results = instances.exercise.getResults();
             }
         }
-        
-        if (exerciseType === 'multiple_choice' && results) {
-            difficulty = document.getElementById('mcDifficulty').value;
+
+        // Get difficulty from the appropriate difficulty selector
+        if (exerciseType === 'multiple_choice') {
+            difficulty = document.getElementById('mcDifficulty')?.value;
         } else if (exerciseType === 'fill_in_the_blank') {
-            results = this.fillInBlankExercise.getResults();
-            difficulty = document.getElementById('fibDifficulty').value;
+            difficulty = document.getElementById('fibDifficulty')?.value;
         } else if (exerciseType === 'spelling') {
-            results = this.spellingExercise.getResults();
-            difficulty = document.getElementById('spDifficulty').value;
+            difficulty = document.getElementById('spDifficulty')?.value;
         }
         
         // Record score locally
@@ -773,8 +793,19 @@ class App {
                 }))
             };
             
-            await this.sessionManager.endActivity(exerciseType, backendResults, tuningSettings);
+            const endActivityResponse = await this.sessionManager.endActivity(exerciseType, backendResults, tuningSettings);
             console.log('[BREADCRUMB][RESULTS] Activity results saved to database');
+            console.log('[BREADCRUMB][RESULTS] End activity response:', endActivityResponse);
+            
+            // Update UI to reflect any newly unlocked activities
+            if (endActivityResponse.unlocked && endActivityResponse.unlocked.length > 0) {
+                console.log('[BREADCRUMB][RESULTS] 🎉 Activities unlocked:', endActivityResponse.unlocked);
+                console.log('[BREADCRUMB][RESULTS] Updating exercise cards to show unlocked activities...');
+                this.updateExerciseCards();
+                console.log('[BREADCRUMB][RESULTS] ✓ Exercise cards updated');
+            } else {
+                console.log('[BREADCRUMB][RESULTS] No new activities unlocked this time');
+            }
         } catch (error) {
             console.error('[BREADCRUMB][RESULTS] Failed to save results to database:', error);
             // Continue anyway - local score is saved
@@ -820,6 +851,15 @@ class App {
             const recommendation = await this.apiClient.getNextActivity(sessionId, currentActivity);
             
             console.log('[PROGRESSION] Next activity recommendation:', recommendation);
+            
+            // If a new activity was unlocked, update localStorage and UI
+            if (recommendation.unlocked_new && recommendation.activity_type) {
+                console.log('[PROGRESSION] 🔓 New activity unlocked:', recommendation.activity_type);
+                this.scoreManager.setExerciseUnlocked(recommendation.activity_type, true);
+                console.log('[PROGRESSION] ✓ Updated localStorage');
+                this.updateExerciseCards();
+                console.log('[PROGRESSION] ✓ Updated UI');
+            }
             
             // Build recommendation message
             let message = recommendation.reason;
@@ -885,22 +925,19 @@ class App {
      * Retry Exercise
      */
     retryExercise() {
-        if (this.currentExerciseType === 'multiple_choice') {
-            this.multipleChoiceUI.show();
-        } else if (this.currentExerciseType === 'fill_in_the_blank') {
-            this.fillInBlankUI.show();
-        } else if (this.currentExerciseType === 'spelling') {
-            this.spellingUI.show();
-        } else if (this.currentExerciseType === 'bubble_pop') {
-            // For Bubble Pop, restart with the same settings
-            this.showScreen('bubblePopScreen');
-            // Start the game directly without showing settings
-            this.bubblePopUI.startGame();
-        } else if (this.currentExerciseType === 'fluent_reading') {
-            // For Fluent Reading, restart with the same settings
-            this.showScreen('fluentReadingScreen');
-            // Start the reading directly without showing settings
-            this.fluentReadingUI.startReading();
+        if (this.currentExerciseType) {
+            // Use ActivityManager to restart the activity
+            const instances = this.activityManager.getInstances(this.currentExerciseType);
+            if (instances && instances.ui) {
+                // Call the UI's show/start method
+                if (typeof instances.ui.show === 'function') {
+                    instances.ui.show();
+                } else if (typeof instances.ui.startGame === 'function') {
+                    instances.ui.startGame();
+                } else if (typeof instances.ui.startReading === 'function') {
+                    instances.ui.startReading();
+                }
+            }
         }
     }
 

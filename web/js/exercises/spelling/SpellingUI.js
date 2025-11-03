@@ -67,22 +67,13 @@ class SpellingUI {
     
     /**
      * Show the exercise screen
+     * Settings are now passed from ActivityManager via trigger()
+     * Exercise is already initialized by ActivityManager, so we just display it
      */
     async show() {
         this.app.showScreen('spellingScreen');
         
-        // Default: Hide settings, prepare exercise panel
-        document.getElementById('spSettingsPanel').style.display = 'none';
-        document.getElementById('spExercisePanel').style.display = 'block';
-        
-        // Show loading state
-        const questionText = document.getElementById('spQuestionText');
-        questionText.textContent = 'Loading activity...';
-        const input = document.getElementById('spAnswerInput');
-        input.disabled = true;
-        document.getElementById('spSubmitBtn').disabled = true;
-        
-        // Check for manual override
+        // Check for manual override (dev mode)
         const urlParams = new URLSearchParams(window.location.search);
         const forceSettings = urlParams.has('showSettings');
         
@@ -93,38 +84,38 @@ class SpellingUI {
             return;
         }
         
-        // Otherwise: get backend recommendations and start
-        const sessionManager = this.app.sessionManager;
+        // Otherwise: Exercise is already initialized by ActivityManager
+        // Get settings from ActivityManager's currentSettings
+        const settings = this.app.activityManager.currentSettings || {
+            difficulty: 'easy',
+            numQuestions: 10
+        };
         
-        if (sessionManager && sessionManager.isBackendConnected()) {
-            try {
-                const recommendations = await sessionManager.startActivity('spelling');
-                console.log('[Spelling] Backend recommendations:', recommendations);
-                
-                // Use backend-recommended settings
-                const difficulty = recommendations.recommended_tuning?.difficulty || 'easy';
-                const numQuestions = recommendations.recommended_tuning?.num_questions || 10;
-                
-                // Set the values in the UI (for consistency)
-                document.getElementById('spDifficulty').value = difficulty;
-                document.getElementById('spNumQuestions').value = numQuestions;
-                
-                // Show exercise chat panel
-                this.showExerciseChat();
-                
-                // Start directly
-                this.startExercise();
-                return;
-            } catch (error) {
-                console.error('[Spelling] Failed to get backend recommendations:', error);
-                // Fall through to show settings panel
-            }
+        console.log('[Spelling] Using ActivityManager settings:', settings);
+        
+        // Set the values in the UI (for consistency)
+        document.getElementById('spDifficulty').value = settings.difficulty;
+        document.getElementById('spNumQuestions').value = settings.numQuestions || settings.num_questions || 10;
+        
+        // Prepare exercise panel
+        document.getElementById('spSettingsPanel').style.display = 'none';
+        document.getElementById('spExercisePanel').style.display = 'block';
+        
+        // Show exercise chat panel
+        this.showExerciseChat();
+        
+        // Send activity_start event to backend to create activity agent with correct difficulty
+        if (this.app.wsClient && this.app.wsClient.isConnected()) {
+            this.app.wsClient.send({
+                type: 'activity_start',
+                activity: 'spelling',
+                difficulty: settings.difficulty
+            });
+            console.log('[BREADCRUMB][SP] Sent activity_start event');
         }
         
-        // Fallback: Show settings panel (backend unavailable or error)
-        console.log('[Spelling] Showing settings panel (backend unavailable)');
-        document.getElementById('spSettingsPanel').style.display = 'block';
-        document.getElementById('spExercisePanel').style.display = 'none';
+        // Display questions directly (exercise already initialized by ActivityManager)
+        this.displayQuestion();
     }
     
     /**
@@ -140,9 +131,14 @@ class SpellingUI {
         document.getElementById('spSettingsPanel').style.display = 'none';
         document.getElementById('spExercisePanel').style.display = 'block';
 
-        // Start activity chat widget
-        if (this.app.activityChatWidget) {
-            this.app.activityChatWidget.startActivity('spelling', difficulty);
+        // Send activity_start event to backend to create activity agent
+        if (this.app.wsClient && this.app.wsClient.isConnected()) {
+            this.app.wsClient.send({
+                type: 'activity_start',
+                activity: 'spelling',
+                difficulty: difficulty
+            });
+            console.log('[BREADCRUMB][SP] Sent activity_start event');
         }
 
         this.displayQuestion();
@@ -189,41 +185,7 @@ class SpellingUI {
 
         const isCorrect = this.exercise.submitAnswer(answer);
         const difficulty = this.exercise.difficulty;
-        const behavior = SpellingExercise.DIFFICULTY_BEHAVIORS[difficulty];
         const question = this.exercise.getCurrentQuestion();
-        
-        this.showFeedback(isCorrect);
-        
-        // Send activity event based on difficulty
-        if (!isCorrect && behavior && this.app.activityChatWidget) {
-            if (behavior.feedbackTiming === 'immediate') {
-                // Easy mode: immediate feedback
-                this.app.activityChatWidget.sendActivityEvent('wrong_answer', {
-                    question: question.definition,
-                    userAnswer: answer,
-                    correctAnswer: question.word,
-                    difficulty: difficulty,
-                    behavior: 'immediate_hint'
-                });
-            } else if (behavior.feedbackTiming === 'per_question') {
-                // Medium mode: one hint
-                this.app.activityChatWidget.sendActivityEvent('wrong_answer', {
-                    question: question.definition,
-                    userAnswer: answer,
-                    correctAnswer: question.word,
-                    difficulty: difficulty,
-                    behavior: 'single_hint'
-                });
-            }
-            // Hard mode: no immediate feedback (end_only)
-        } else if (isCorrect && behavior && behavior.confirmCorrections && this.app.activityChatWidget) {
-            // Confirm correct answers in easy/medium modes
-            this.app.activityChatWidget.sendActivityEvent('correct_answer', {
-                question: question.definition,
-                answer: answer,
-                difficulty: difficulty
-            });
-        }
         
         // Disable input and submit button
         input.disabled = true;
@@ -232,12 +194,40 @@ class SpellingUI {
         // Show visual feedback on input
         input.classList.add(isCorrect ? 'correct' : 'incorrect');
         
-        if (this.exercise.isComplete()) {
+        // Agent-driven flow: Send events to backend for LLM response
+        if (isCorrect) {
+            // Correct answer: Send event to LLM for encouragement
+            this.sendActivityEvent('correct_answer', {
+                question: question.definition,
+                correctAnswer: question.word,
+                userAnswer: answer
+            });
+            
+            // Auto-advance after 3 seconds (give time for LLM response)
             setTimeout(() => {
-                this.showResults();
-            }, 2000);
+                if (this.exercise.isComplete()) {
+                    this.showResults();
+                } else {
+                    this.nextQuestion();
+                }
+            }, 3000);
         } else {
-            document.getElementById('spNextBtn').style.display = 'inline-block';
+            // Wrong answer: Send event to LLM for hint/feedback
+            this.sendActivityEvent('wrong_answer', {
+                question: question.definition,
+                correctAnswer: question.word,
+                userAnswer: answer,
+                difficulty: difficulty
+            });
+            
+            // Auto-advance after 3 seconds (give time for LLM response)
+            setTimeout(() => {
+                if (this.exercise.isComplete()) {
+                    this.showResults();
+                } else {
+                    this.nextQuestion();
+                }
+            }, 3000);
         }
         
         document.getElementById('spScore').textContent = this.exercise.score;
@@ -296,11 +286,6 @@ class SpellingUI {
         
         // Hide exercise chat
         this.hideExerciseChat();
-        
-        // End activity chat session
-        if (this.app.activityChatWidget) {
-            this.app.activityChatWidget.endActivity();
-        }
         
         // Send activity_end event to backend
         if (this.app.wsClient && this.app.wsClient.isConnected()) {

@@ -260,7 +260,7 @@
                         <label for="fibDifficulty">Difficulty:</label>
                         <select id="fibDifficulty">
                             <option value="easy">Easy (Only needed words)</option>
-                            <option value="moderate">Moderate (All vocabulary)</option>
+                            <option value="hard">Hard (All vocabulary)</option>
                         </select>
                     </div>
                     <div class="button-group">
@@ -415,7 +415,7 @@
                         <label for="bpDifficulty">Difficulty:</label>
                         <select id="bpDifficulty">
                             <option value="easy">Easy - Press Q for correct words</option>
-                            <option value="moderate">Moderate - Press R for incorrect words</option>
+                            <option value="medium">Medium - Press R for incorrect words</option>
                             <option value="hard">Hard - Use Q and R for both types</option>
                         </select>
                         
@@ -462,7 +462,7 @@
                                 <span id="bpScoreMissed" class="stat-value">0</span>
                             </div>
                         </div>
-                        <button id="bpQuitBtn" class="btn btn-danger btn-small">Quit Game</button>
+                        <button id="bpPauseBtn" class="btn btn-warning btn-small">Pause</button>
                     </div>
                     
                     <!-- Game Canvas -->
@@ -472,7 +472,7 @@
                     
                     <!-- Game Controls Info -->
                     <div class="game-controls">
-                        <p><strong>Controls:</strong> Hover over bubble + Q = Correct Spelling | Hover + R = Incorrect Spelling | ESC = Pause</p>
+                        <p><strong>Controls:</strong> Hover over bubble + Q = Correct Spelling | Hover + R = Incorrect Spelling</p>
                     </div>
                 </div>
 
@@ -533,7 +533,9 @@
                             <input type="text" class="chat-input" id="bpPauseChatInput" placeholder="Ask for help...">
                             <button class="chat-send" id="bpPauseChatSend">Send</button>
                         </div>
-                        <div class="pause-resume-hint">Press ESC to resume game</div>
+                        <div class="button-group" style="margin-top: 15px;">
+                            <button id="bpPlayBtn" class="btn btn-primary btn-large">Play</button>
+                        </div>
                     </aside>
                 </div>
             </div>
@@ -548,7 +550,7 @@
                         <label for="frDifficulty">Difficulty:</label>
                         <select id="frDifficulty">
                             <option value="easy">Easy - Vocabulary focus (67% speed, 2x time)</option>
-                            <option value="moderate" selected>Moderate - Spelling focus (85% speed, 1.5x time)</option>
+                            <option value="medium" selected>Medium - Spelling focus (85% speed, 1.5x time)</option>
                             <option value="hard">Hard - All variants (100% speed, 1.3x time)</option>
                         </select>
                         

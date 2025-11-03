@@ -49,20 +49,13 @@ class FillInBlankUI {
     
     /**
      * Show the exercise screen
+     * Settings are now passed from ActivityManager via trigger()
+     * Exercise is already initialized by ActivityManager, so we just display it
      */
     async show() {
         this.app.showScreen('fillInBlankScreen');
         
-        // Default: Hide settings, prepare exercise panel
-        document.getElementById('fibSettingsPanel').style.display = 'none';
-        document.getElementById('fibExercisePanel').style.display = 'block';
-        
-        // Show loading state
-        const questionsDiv = document.getElementById('fibQuestions');
-        questionsDiv.innerHTML = '<div style="text-align: center; padding: 40px; color: #666;">Loading activity...</div>';
-        document.getElementById('fibCheckBtn').disabled = true;
-        
-        // Check for manual override
+        // Check for manual override (dev mode)
         const urlParams = new URLSearchParams(window.location.search);
         const forceSettings = urlParams.has('showSettings');
         
@@ -73,38 +66,33 @@ class FillInBlankUI {
             return;
         }
         
-        // Otherwise: get backend recommendations and start
-        const sessionManager = this.app.sessionManager;
+        // Otherwise: Exercise is already initialized by ActivityManager
+        // Get settings from ActivityManager's currentSettings
+        const settings = this.app.activityManager.currentSettings || {
+            difficulty: 'easy',
+            numQuestions: 10
+        };
         
-        if (sessionManager && sessionManager.isBackendConnected()) {
-            try {
-                const recommendations = await sessionManager.startActivity('fill_in_the_blank');
-                console.log('[FillInBlank] Backend recommendations:', recommendations);
-                
-                // Use backend-recommended settings
-                const difficulty = recommendations.recommended_tuning?.difficulty || 'easy';
-                const numQuestions = recommendations.recommended_tuning?.num_questions || 10;
-                
-                // Set the values in the UI (for consistency)
-                document.getElementById('fibDifficulty').value = difficulty;
-                document.getElementById('fibNumQuestions').value = numQuestions;
-                
-                // Show exercise chat panel
-                this.showExerciseChat();
-                
-                // Start directly
-                this.startExercise();
-                return;
-            } catch (error) {
-                console.error('[FillInBlank] Failed to get backend recommendations:', error);
-                // Fall through to show settings panel
-            }
+        console.log('[FillInBlank] Using ActivityManager settings:', settings);
+        
+        // Set the values in the UI (for consistency)
+        document.getElementById('fibDifficulty').value = settings.difficulty;
+        document.getElementById('fibNumQuestions').value = settings.numQuestions || settings.num_questions || 10;
+        
+        // Prepare exercise panel
+        document.getElementById('fibSettingsPanel').style.display = 'none';
+        document.getElementById('fibExercisePanel').style.display = 'block';
+        
+        // Show exercise chat panel
+        this.showExerciseChat();
+        
+        // Start activity chat widget with correct difficulty
+        if (this.app.activityChatWidget) {
+            this.app.activityChatWidget.startActivity('fill_in_the_blank', settings.difficulty);
         }
         
-        // Fallback: Show settings panel (backend unavailable or error)
-        console.log('[FillInBlank] Showing settings panel (backend unavailable)');
-        document.getElementById('fibSettingsPanel').style.display = 'block';
-        document.getElementById('fibExercisePanel').style.display = 'none';
+        // Display questions directly (exercise already initialized by ActivityManager)
+        this.displayQuestions();
     }
     
     /**
@@ -119,6 +107,16 @@ class FillInBlankUI {
 
         document.getElementById('fibSettingsPanel').style.display = 'none';
         document.getElementById('fibExercisePanel').style.display = 'block';
+
+        // CRITICAL: Update ActivityManager's currentSettings so it knows the actual difficulty
+        // This ensures the correct difficulty is recorded when the activity ends
+        if (this.app.activityManager) {
+            this.app.activityManager.currentSettings = {
+                numQuestions: numQuestions,
+                difficulty: difficulty
+            };
+            console.log('[FillInBlank] Updated ActivityManager settings:', this.app.activityManager.currentSettings);
+        }
 
         // Start activity chat widget
         if (this.app.activityChatWidget) {
@@ -239,6 +237,29 @@ class FillInBlankUI {
                 this.addWordToBank(previousWord);
             }
             
+            // In easy mode, send immediate feedback to agent
+            if (this.exercise.difficulty === 'easy') {
+                const question = this.exercise.questions.find(q => q.blankId === blankId);
+                if (question) {
+                    console.log(`[FillInBlank] Easy mode: Sending immediate feedback for "${word}" (correct: ${question.isCorrect})`);
+                    
+                    if (question.isCorrect) {
+                        this.sendActivityEvent('correct_answer', {
+                            question: question.definition,
+                            correctAnswer: question.word,
+                            userAnswer: word
+                        });
+                    } else {
+                        this.sendActivityEvent('wrong_answer', {
+                            question: question.definition,
+                            correctAnswer: question.word,
+                            userAnswer: word,
+                            difficulty: 'easy'
+                        });
+                    }
+                }
+            }
+            
             // Make blank clickable to remove word
             blankSpace.style.cursor = 'pointer';
             blankSpace.onclick = () => {
@@ -319,7 +340,7 @@ class FillInBlankUI {
                             questionNumber: index + 1
                         });
                     } else if (behavior.feedbackTiming === 'per_question') {
-                        // Moderate mode: one hint
+                        // Hard mode: one hint
                         this.app.activityChatWidget.sendActivityEvent('wrong_answer', {
                             question: question.definition,
                             userAnswer: question.userAnswer || '(blank)',

@@ -164,14 +164,24 @@ class SessionManager {
                 tuningSettings
             );
             
-            console.log('Activity ended:', activityType, response);
+            console.log('[SessionManager] ===== ACTIVITY END RESPONSE =====');
+            console.log('[SessionManager] Activity:', activityType);
+            console.log('[SessionManager] Response:', response);
+            console.log('[SessionManager] Unlocked activities:', response.unlocked_activities);
             
             // Update local unlock state based on backend response
             if (response.unlocked_activities && response.unlocked_activities.length > 0) {
+                console.log('[SessionManager] 🔓 UNLOCKING ACTIVITIES:', response.unlocked_activities);
                 response.unlocked_activities.forEach(exercise => {
-                    this.scoreManager.toggleExerciseLock(exercise);
+                    console.log(`[SessionManager] Setting ${exercise} to unlocked`);
+                    this.scoreManager.setExerciseUnlocked(exercise, true);
+                    console.log(`[SessionManager] ✓ ${exercise} unlocked in localStorage`);
                 });
+                console.log('[SessionManager] All unlocks applied to localStorage');
+            } else {
+                console.log('[SessionManager] No new activities unlocked');
             }
+            console.log('[SessionManager] ===== END ACTIVITY RESPONSE =====');
 
             return {
                 offline: false,
@@ -317,7 +327,7 @@ class SessionManager {
         if (activityType === 'multiple_choice') {
             return difficulty === '5';
         } else if (activityType === 'fill_in_the_blank') {
-            return difficulty === 'moderate';
+            return difficulty === 'hard';
         } else {
             return difficulty === 'hard';
         }

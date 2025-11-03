@@ -1,8 +1,9 @@
 /**
  * Fill in the Blank Exercise Module
+ * @extends ExerciseFramework
  */
 
-class FillInBlankExercise {
+class FillInBlankExercise extends ExerciseFramework {
     /**
      * Difficulty behavior configurations
      * Defines how the activity helper chat should behave at each difficulty level
@@ -14,41 +15,39 @@ class FillInBlankExercise {
             confirmCorrections: true,         // Confirm when student fixes mistake
             description: 'Easy - Only needed words, immediate feedback'
         },
-        'moderate': {
-            feedbackTiming: 'per_question',   // One hint per question
-            hintsPerMistake: 1,               // One hint per mistake
-            confirmCorrections: true,         // Confirm corrections
-            description: 'Moderate - All vocabulary, one hint per mistake'
-        },
         'hard': {
-            feedbackTiming: 'end_only',       // Feedback only at end
-            hintsPerMistake: 0,               // No hints during exercise
-            confirmCorrections: false,        // No confirmation
-            description: 'Hard - All vocabulary, feedback only at end'
+            feedbackTiming: 'end_only',   // Feedback only at end
+            hintsPerMistake: 0,               // no hint per mistake
+            confirmCorrections: true,         // Confirm corrections
+            description: 'Hard - All vocabulary,  no hints'
         }
     };
 
     constructor(curriculumManager) {
-        this.curriculumManager = curriculumManager;
+        super(curriculumManager, 'fill_in_the_blank');
         this.questions = [];
-        this.currentQuestionIndex = 0;
-        this.score = 0;
-        this.userAnswers = [];
-        this.numQuestions = 10;
-        this.difficulty = 'easy'; // 'easy', 'moderate', or 'hard'
+        this.wordBank = [];
         this.draggedWord = null;
+    }
+
+    /**
+     * Get default settings
+     */
+    getDefaultSettings() {
+        return {
+            numQuestions: 10,
+            difficulty: 'easy',
+            timeLimit: null
+        };
     }
 
     /**
      * Initialize the exercise with specified parameters
      */
-    initialize(numQuestions, difficulty) {
-        this.numQuestions = numQuestions;
-        this.difficulty = difficulty;
-        this.currentQuestionIndex = 0;
-        this.score = 0;
-        this.userAnswers = [];
+    initialize(settings = {}) {
+        super.initialize(settings);
         this.generateQuestions();
+        return this;
     }
 
     /**
@@ -58,16 +57,27 @@ class FillInBlankExercise {
         const vocabulary = this.curriculumManager.getVocabulary();
         
         // Get random vocabulary items for questions
-        const selectedItems = this.curriculumManager.getRandomVocabularyItems(this.numQuestions);
+        const selectedItems = this.curriculumManager.getRandomVocabularyItems(this.settings.numQuestions);
+        
+        console.log(`[FillInBlank] Generating questions with difficulty: "${this.settings.difficulty}"`);
+        console.log(`[FillInBlank] Total vocabulary available: ${vocabulary.length} words`);
+        console.log(`[FillInBlank] Questions to generate: ${selectedItems.length}`);
         
         // Create word bank based on difficulty
         let wordBank = [];
-        if (this.difficulty === 'easy') {
+        if (this.settings.difficulty === 'easy') {
             // Easy: only include the necessary words
             wordBank = selectedItems.map(item => item.word);
-        } else {
-            // Moderate/Hard: include all vocabulary words
+            console.log(`[FillInBlank] Easy mode: word bank has ${wordBank.length} words (only needed words)`);
+        } else if (this.settings.difficulty === 'hard') {
+            // Hard: include all vocabulary words
             wordBank = vocabulary.map(item => item.word);
+            console.log(`[FillInBlank] Hard mode: word bank has ${wordBank.length} words (ALL vocabulary)`);
+        } else {
+            // Fallback: treat any other difficulty as hard mode (all words)
+            console.warn(`[FillInBlank] Unexpected difficulty: "${this.settings.difficulty}", treating as hard mode (all words)`);
+            wordBank = vocabulary.map(item => item.word);
+            console.log(`[FillInBlank] Fallback: word bank has ${wordBank.length} words (ALL vocabulary)`);
         }
         
         // Shuffle word bank
@@ -85,6 +95,9 @@ class FillInBlankExercise {
         });
         
         this.wordBank = wordBank;
+        this.totalQuestions = this.questions.length;
+        
+        console.log(`[FillInBlank] Generation complete: ${this.questions.length} questions, ${this.wordBank.length} words in bank`);
     }
 
     /**
