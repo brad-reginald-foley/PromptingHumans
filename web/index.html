@@ -651,6 +651,7 @@
     <!-- JavaScript Files -->
     <!-- Core Framework -->
     <script src="js/core/ExerciseFramework.js"></script>
+    <script src="js/core/ActivityManager.js"></script>
     
     <!-- Utilities -->
     <script src="js/utils/ErrorHandler.js"></script>
@@ -668,7 +669,7 @@
     <script src="js/curriculum.js"></script>
     <script src="js/scoreManager.js"></script>
     
-    <!-- Modular Exercises -->
+    <!-- Modular Exercises (Exercise and UI classes only) -->
     <!-- Multiple Choice -->
     <script src="js/exercises/multipleChoice/MultipleChoiceExercise.js"></script>
     <script src="js/exercises/multipleChoice/MultipleChoiceUI.js"></script>
@@ -689,7 +690,14 @@
     <script src="js/exercises/fluentReading/FluentReadingExercise.js"></script>
     <script src="js/exercises/fluentReading/FluentReadingUI.js"></script>
     
-    <!-- Main App -->
+    <!-- Main App (creates window.activityManager) -->
     <script src="js/app.js"></script>
+    
+    <!-- Activity Registrations (must load AFTER app.js) -->
+    <script src="js/exercises/multipleChoice/register.js"></script>
+    <script src="js/exercises/fillInBlank/register.js"></script>
+    <script src="js/exercises/spelling/register.js"></script>
+    <script src="js/exercises/bubblePop/register.js"></script>
+    <script src="js/exercises/fluentReading/register.js"></script>
 </body>
 </html>

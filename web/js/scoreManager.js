@@ -179,6 +179,7 @@ class ScoreManager {
 
     /**
      * Record a score for an exercise
+     * Note: Unlock logic is now handled entirely by the backend based on Bayesian proficiency
      */
     recordScore(exerciseType, difficulty, score, total) {
         if (!this.userData) return;
@@ -220,42 +221,10 @@ class ScoreManager {
         // Increment attempts
         exercise.scores[difficultyKey].attempts++;
 
-        // Check if we should unlock the next exercise
-        this.checkUnlockConditions(exerciseType, difficulty, percentage);
+        // Backend now handles all unlock logic via Bayesian proficiency thresholds
+        // Frontend simply trusts backend unlock states from mergeBackendProgress()
 
         this.saveUserData();
-    }
-
-    /**
-     * Check if we should unlock the next exercise
-     */
-    checkUnlockConditions(exerciseType, difficulty, percentage) {
-        // Only unlock next exercise if:
-        // 1. Score is 80% or higher
-        // 2. Difficulty is "hard" (5 for multiple choice, "moderate" for fill-in-blank, "hard" for others)
-        const isHardDifficulty = 
-            (exerciseType === 'multiple_choice' && difficulty === '5') ||
-            (exerciseType === 'fill_in_the_blank' && difficulty === 'moderate') ||
-            (exerciseType === 'spelling' && difficulty === 'hard') ||
-            (exerciseType === 'bubble_pop' && difficulty === 'hard');
-        
-        if (percentage >= 80 && isHardDifficulty) {
-            const exerciseOrder = [
-                'multiple_choice',
-                'fill_in_the_blank',
-                'spelling',
-                'bubble_pop',
-                'fluent_reading'  // Fluent Reading is unlocked after Bubble Pop
-            ];
-            
-            const currentIndex = exerciseOrder.indexOf(exerciseType);
-            if (currentIndex !== -1 && currentIndex < exerciseOrder.length - 1) {
-                const nextExercise = exerciseOrder[currentIndex + 1];
-                if (this.userData.exercises[nextExercise]) {
-                    this.userData.exercises[nextExercise].unlocked = true;
-                }
-            }
-        }
     }
 
     /**

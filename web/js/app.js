@@ -90,26 +90,13 @@ class App {
         this.currentActivityType = null;
         this.currentActivityDifficulty = null;
         
-        // Initialize Multiple Choice with new modular pattern
-        this.multipleChoiceExercise = new MultipleChoiceExercise(this.curriculumManager, this);
-        this.multipleChoiceUI = new MultipleChoiceUI(this, this.multipleChoiceExercise);
+        // Initialize ActivityManager - handles all activities centrally
+        this.activityManager = new ActivityManager(this);
+        // Make activityManager available globally for registration immediately
+        window.activityManager = this.activityManager;
+        // Activities will register themselves when their register.js files load
         
-        // Initialize Fill in the Blank with new modular pattern
-        this.fillInBlankExercise = new FillInBlankExercise(this.curriculumManager);
-        this.fillInBlankUI = new FillInBlankUI(this, this.fillInBlankExercise);
-        
-        // Initialize Spelling with new modular pattern
-        this.spellingExercise = new SpellingExercise(this.curriculumManager);
-        this.spellingUI = new SpellingUI(this, this.spellingExercise);
-        
-        // Initialize Bubble Pop game
-        this.bubblePopExercise = new BubblePopExercise(this.curriculumManager);
-        this.bubblePopUI = new BubblePopUI(this, this.bubblePopExercise);
-        
-        // Initialize Fluent Reading exercise
-        this.fluentReadingExercise = new FluentReadingExercise(this.curriculumManager);
-        this.fluentReadingUI = new FluentReadingUI(this, this.fluentReadingExercise);
-        
+        // Legacy properties for backward compatibility
         this.currentExercise = null;
         this.currentExerciseType = null;
         this.selectedAnswer = null;
@@ -117,7 +104,6 @@ class App {
         
         this.init();
     }
-
     /**
      * Initialize the application
      */
@@ -135,6 +121,7 @@ class App {
         console.log('Dev Mode Status:', this.isDevMode);
         console.log('URL:', window.location.href);
         console.log('URL Params:', window.location.search);
+        console.log('Registered Activities:', this.activityManager.getAllActivities().map(a => a.id));
         
         // Initialize dev mode if enabled
         if (this.isDevMode) {
@@ -680,30 +667,62 @@ class App {
     }
 
     /**
-     * Select an exercise
+     * Select an exercise using ActivityManager
      */
-    selectExercise(exerciseType) {
+    async selectExercise(exerciseType) {
+        console.log(`[App.selectExercise] ===== STARTING ACTIVITY: ${exerciseType} =====`);
+        
         if (!this.scoreManager.isExerciseUnlocked(exerciseType)) {
+            console.log(`[App.selectExercise] Activity ${exerciseType} is LOCKED`);
             alert('This exercise is locked. Complete previous exercises to unlock it!');
             return;
         }
 
+        console.log(`[App.selectExercise] Activity ${exerciseType} is UNLOCKED, proceeding...`);
         this.currentExerciseType = exerciseType;
         
-        if (exerciseType === 'multiple_choice') {
-            this.multipleChoiceUI.show();
-        } else if (exerciseType === 'fill_in_the_blank') {
-            this.fillInBlankUI.show();
-        } else if (exerciseType === 'spelling') {
-            this.spellingUI.show();
-        } else if (exerciseType === 'bubble_pop') {
-            this.showScreen('bubblePopScreen');
-            this.bubblePopUI.initialize();
-            this.bubblePopUI.show();
-        } else if (exerciseType === 'fluent_reading') {
-            this.showScreen('fluentReadingScreen');
-            this.fluentReadingUI.initialize();
-            this.fluentReadingUI.show();
+        try {
+            // Use ActivityManager for unified lifecycle
+            console.log(`[App.selectExercise] Step 1: Triggering activity...`);
+            await this.activityManager.trigger(exerciseType);
+            console.log(`[App.selectExercise] Step 1: ✓ Trigger complete`);
+            
+            console.log(`[App.selectExercise] Step 2: Building activity...`);
+            await this.activityManager.build();
+            console.log(`[App.selectExercise] Step 2: ✓ Build complete`);
+            
+            console.log(`[App.selectExercise] Step 3: Starting activity...`);
+            await this.activityManager.start();
+            console.log(`[App.selectExercise] Step 3: ✓ Start complete`);
+            
+            console.log(`[App.selectExercise] ===== ACTIVITY ${exerciseType} STARTED SUCCESSFULLY =====`);
+        } catch (error) {
+            // Log detailed error information
+            console.error(`[App.selectExercise] ===== ERROR DURING ACTIVITY START =====`);
+            console.error(`[App.selectExercise] Activity: ${exerciseType}`);
+            console.error(`[App.selectExercise] Error type: ${error.constructor.name}`);
+            console.error(`[App.selectExercise] Error message: ${error.message}`);
+            console.error(`[App.selectExercise] Error stack:`, error.stack);
+            
+            // Check if the activity actually started despite the error
+            const activityScreens = ['multipleChoiceScreen', 'fillInBlankScreen', 'spellingScreen', 'bubblePopScreen', 'fluentReadingScreen'];
+            const activeScreens = activityScreens.filter(screenId => {
+                const screen = document.getElementById(screenId);
+                return screen && screen.classList.contains('active');
+            });
+            
+            console.log(`[App.selectExercise] Active screens after error:`, activeScreens);
+            
+            const isActivityShowing = activeScreens.length > 0;
+            
+            if (isActivityShowing) {
+                console.log(`[App.selectExercise] Activity screen IS showing - error was harmless, continuing...`);
+            } else {
+                console.error(`[App.selectExercise] Activity screen NOT showing - genuine failure!`);
+                alert(`Failed to start activity: ${error.message}`);
+            }
+            
+            console.error(`[App.selectExercise] ===== END ERROR LOG =====`);
         }
     }
 

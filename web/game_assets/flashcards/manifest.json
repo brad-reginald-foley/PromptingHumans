@@ -1,0 +1,57 @@
+{
+  "generated_at": "2025-11-02T16:48:24.043678",
+  "total_assets": 97,
+  "vocabulary_count": 11,
+  "assets": {
+    "images": [
+      "web/game_assets/flashcards/images/mast_image.png",
+      "web/game_assets/flashcards/images/mate_image.png",
+      "web/game_assets/flashcards/images/pirate_image.png",
+      "web/game_assets/flashcards/images/shop_image.png",
+      "web/game_assets/flashcards/images/mask_image.png",
+      "web/game_assets/flashcards/images/dog_image.png",
+      "web/game_assets/flashcards/images/frog_image.png",
+      "web/game_assets/flashcards/images/father_image.png",
+      "web/game_assets/flashcards/images/bat_image.png",
+      "web/game_assets/flashcards/images/cap_image.png",
+      "web/game_assets/flashcards/images/rock_image.png"
+    ],
+    "words": [
+      "web/game_assets/flashcards/words/mast_word.svg",
+      "web/game_assets/flashcards/words/mate_word.svg",
+      "web/game_assets/flashcards/words/pirate_word.svg",
+      "web/game_assets/flashcards/words/shop_word.svg",
+      "web/game_assets/flashcards/words/mask_word.svg",
+      "web/game_assets/flashcards/words/dog_word.svg",
+      "web/game_assets/flashcards/words/frog_word.svg",
+      "web/game_assets/flashcards/words/father_word.svg",
+      "web/game_assets/flashcards/words/bat_word.svg",
+      "web/game_assets/flashcards/words/cap_word.svg",
+      "web/game_assets/flashcards/words/rock_word.svg"
+    ],
+    "letters": [
+      "web/game_assets/flashcards/letters/r_letter.svg",
+      "web/game_assets/flashcards/letters/gr_letter.svg",
+      "web/game_assets/flashcards/letters/d_letter.svg",
+      "web/game_assets/flashcards/letters/h_letter.svg",
+      "web/game_assets/flashcards/letters/k_letter.svg",
+      "web/game_assets/flashcards/letters/sh_letter.svg",
+      "web/game_assets/flashcards/letters/p_letter.svg",
+      "web/game_assets/flashcards/letters/c_letter.svg",
+      "web/game_assets/flashcards/letters/b_letter.svg",
+      "web/game_assets/flashcards/letters/ch_letter.svg",
+      "web/game_assets/flashcards/letters/i_letter.svg",
+      "web/game_assets/flashcards/letters/m_letter.svg",
+      "web/game_assets/flashcards/letters/f_letter.svg",
+      "web/game_assets/flashcards/letters/fr_letter.svg",
+      "web/game_assets/flashcards/letters/s_letter.svg"
+    ],
+    "card_back": "web/game_assets/flashcards/card_back.svg"
+  },
+  "statistics": {
+    "images_generated": 11,
+    "words_generated": 11,
+    "letters_generated": 15,
+    "card_back_generated": true
+  }
+}
